@@ -41,12 +41,12 @@ service cloud.firestore {
 
     // ------------------------------------------------------------------
     // slotCounts: non-PII capacity counters, one document per
-    // "{bloodDriveId}_{slotId}". Must be pre-seeded by an administrator
-    // with { bloodDriveId, slotId, label, capacity, count: 0 }.
+    // "{bloodDriveId}_{slotId}". A client may create one only as part of
+    // the first valid reservation for a known slot, with count starting at 1.
     // ------------------------------------------------------------------
     match /slotCounts/{slotDocId} {
       allow read: if true;
-      allow create: if false;
+      allow create: if isValidInitialSlotCount(slotDocId, request.resource.data);
       allow delete: if false;
 
       allow update: if isValidSlotIncrement(resource.data, request.resource.data);
@@ -97,7 +97,7 @@ function isValidRegistration(data) {
 
     && data.senatorIds is list && data.senatorIds.size() >= 1 && data.senatorIds.size() <= 6
 
-    && data.appointmentSlotId is string && data.appointmentSlotId.size() > 0 && data.appointmentSlotId.size() <= 10
+    && isValidAppointmentSlotId(data.appointmentSlotId)
 
     // Basic sanity bounds only; NOT an authoritative recomputation of age.
     // A trusted backend must independently re-derive age from `dob` and
@@ -112,6 +112,26 @@ function isValidRegistration(data) {
     && data.nhsSeniorMember is bool
 
     && data.createdAt == request.time;
+}
+
+function isValidAppointmentSlotId(slotId) {
+  return slotId in [
+    '0800', '0815', '0830', '0845', '0900', '0915', '0930', '0945',
+    '1000', '1015', '1030', '1045', '1100', '1115', '1130', '1145',
+    '1200', '1215', '1230', '1245', '1300', '1315', '1330', '1345',
+    '1400', '1415', '1430'
+  ];
+}
+
+function isValidInitialSlotCount(slotDocId, data) {
+  return data.keys().hasOnly(['bloodDriveId', 'slotId', 'label', 'capacity', 'count'])
+    && data.keys().hasAll(['bloodDriveId', 'slotId', 'label', 'capacity', 'count'])
+    && data.bloodDriveId == 'chs-fall-2026'
+    && isValidAppointmentSlotId(data.slotId)
+    && slotDocId == data.bloodDriveId + '_' + data.slotId
+    && data.label is string && data.label.size() > 0 && data.label.size() <= 20
+    && data.capacity is int && data.capacity == 4
+    && data.count is int && data.count == 1;
 }
 
 function isValidSlotIncrement(before, after) {

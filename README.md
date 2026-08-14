@@ -89,15 +89,15 @@ identifiers tied to a specific student.
 
 ### `slotCounts/{bloodDriveId}_{slotId}`
 
-Non-PII capacity counters, pre-seeded by an administrator (see Section 7).
+Non-PII capacity counters, optionally pre-seeded by an administrator or initialized by the first valid reservation for a known appointment slot (see Section 7).
 
 | Field | Type | Notes |
 |---|---|---|
 | `bloodDriveId` | string | |
 | `slotId` | string | |
 | `label` | string | e.g. `"10:15 AM"`. |
-| `capacity` | number | Fixed at seed time; clients cannot change it. |
-| `count` | number | Only mutable via a validated +1 increment (see rules). |
+| `capacity` | number | Fixed at 4 by public-client creates; clients cannot change it after creation. |
+| `count` | number | Starts at 1 for first-registration initialization, then only mutable via a validated +1 increment (see rules). |
 
 ## 5. Security Model (MVP)
 
@@ -113,9 +113,11 @@ Non-PII capacity counters, pre-seeded by an administrator (see Section 7).
   are rejected outright (`hasOnly(...)`).
 - **`slotCounts` is intentionally separate** from `registrations` so the UI
   can show live "spots left" without any read access to student data. It
-  contains no PII. Clients can only increment `count` by exactly 1, never
-  past `capacity`, and cannot touch any other field; enforced by
-  `firestore.rules`, not by client trust.
+  contains no PII. Clients can initialize a missing slot counter only as
+  the first valid reservation for a known appointment slot (`count: 1`),
+  then can only increment `count` by exactly 1, never past `capacity`, and
+  cannot touch any other field; enforced by `firestore.rules`, not by
+  client trust.
 - **Default deny everything else**: `match /{document=**} { allow read,
   write: if false; }`.
 - **No admin dashboard exists in this codebase.** There is no `/admin`
@@ -142,15 +144,15 @@ is not, and does not claim to be, "FERPA compliant" on its own.
 1. Create/select the Firebase project referenced in `firebase-init.js`
    (`blood-drive-test`) or your own project, and update the config there.
 2. Enable Firestore in Native mode.
-3. **Seed `slotCounts` documents before opening registration.** For each
-   entry in `TIME_SLOTS` (see `config.js`), create a document at
-   `slotCounts/{bloodDriveId}_{slotId}` with:
+3. Optional: pre-seed `slotCounts` documents before opening registration if
+   you want every slot to appear from the Firebase console immediately. If a
+   counter is missing, the first valid registration for that slot creates it
+   atomically with `count: 1`:
    ```json
-   { "bloodDriveId": "chs-fall-2026", "slotId": "0900", "label": "9:00 AM", "capacity": 4, "count": 0 }
+   { "bloodDriveId": "chs-fall-2026", "slotId": "0900", "label": "9:00 AM", "capacity": 4, "count": 1 }
    ```
-   This can be done via the Firebase console or a one-time authenticated
-   admin script; **never** from this public client, and never with the
-   Admin SDK's credentials embedded in frontend code.
+   Admin-created seed documents should use the same shape with `count: 0`.
+   Never embed Admin SDK credentials in frontend code.
 4. Set the real Firebase Web API key in `firebase-init.js` (this value is
    not a secret; see the comment in that file for why).
 
@@ -255,14 +257,19 @@ approval before going live.
 `app.js` uses a single Firestore `runTransaction()` that:
 
 1. Reads the current `slotCounts` document for the requested slot.
-2. Rejects if the slot document doesn't exist or is already at capacity
-   (`SLOT_FULL` / `SLOT_UNAVAILABLE`), which the UI surfaces as
-   *"That appointment just filled up. Please choose another time."*
-3. Otherwise increments `count` by 1 and creates the `registrations`
+2. If the slot counter is missing but the requested slot exists in
+   `TIME_SLOTS`, creates the counter with `count: 1` and creates the
+   `registrations` document in the same commit.
+3. Rejects if an existing slot counter is already at capacity
+   (`SLOT_FULL`) or malformed/unknown (`SLOT_UNAVAILABLE`), which the UI
+   surfaces as *"That appointment just filled up. Please choose another
+   time."*
+4. Otherwise increments `count` by 1 and creates the `registrations`
    document; both writes commit atomically, or neither does.
 
-`firestore.rules` independently re-validates the increment (exactly +1,
-never past `capacity`, no other field changed) and the registration schema,
+`firestore.rules` independently re-validates first-reservation counter
+creation, subsequent increments (exactly +1, never past `capacity`, no
+other field changed), and the registration schema,
 so this guarantee does not depend on trusting the browser. As noted in
 Section 10, production should still move final authority to a Cloud
 Function for rate limiting and duplicate detection that rules alone cannot
