@@ -1,4 +1,4 @@
-# Carmel High School Student Senate — Blood Drive Registration (MVP)
+# Carmel High School Blood Drive Registration (MVP)
 
 > **Status: PROTOTYPE. Not yet approved for real student data.**
 > This system must not collect real student information until it has been
@@ -18,10 +18,10 @@ build step, and no student-facing accounts, dashboard, or login screen.
 1. Student opens the URL and immediately sees the registration form (no
    homepage, nav bar, or marketing content).
 2. Student fills in their information, confirms eligibility, selects the
-   senator(s) who helped them sign up, and picks an open appointment slot.
+   signup helper(s), and picks an open appointment slot.
 3. Student submits the form.
 4. Student sees a confirmation screen with only the details they need
-   (name, drive, date, location, appointment, senator(s), confirmation ID)
+   (name, drive, date, location, appointment, signup helper(s), confirmation ID)
    and can print it or register another student.
 
 Students under 16 (as of the blood-drive date) cannot submit the form.
@@ -49,7 +49,7 @@ Files:
 |---|---|
 | `index.html` | Markup for the form and confirmation view. |
 | `style.css` | All styling. |
-| `config.js` | Single source of truth for event details, senators, and time slots. |
+| `config.js` | Single source of truth for event details, signup helpers, and time slots. |
 | `firebase-init.js` | Firebase app/auth/analytics initialization only — no UI logic. |
 | `app.js` | Form rendering, validation, eligibility logic, and submission. |
 | `firestore.rules` | Authoritative server-side access control (see Section 5). |
