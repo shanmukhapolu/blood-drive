@@ -155,7 +155,7 @@
 
         <div class="field">
           <label for="parentEmail">Parent/Guardian Email <span class="req" aria-hidden="true">*</span></label>
-          <p class="help">Required for all registrations. Students who are 16 will need parent/guardian consent.</p>
+          <p class="help">Students who are 16 will need parent/guardian consent.</p>
           <input type="email" id="parentEmail" name="parentEmail" autocomplete="email" placeholder="parent@example.com" maxlength="120" required />
           <p class="error" id="err-parentEmail" aria-live="polite"></p>
         </div>
@@ -200,7 +200,7 @@
         <legend>Appointment</legend>
 
         <div class="field">
-          <label for="senator-group">Signup helper(s) <span class="req" aria-hidden="true">*</span></label>
+          <label for="senator-group">Senators who assisted you <span class="req" aria-hidden="true">*</span></label>
           <p class="help">Select all that apply.</p>
           <div id="senator-group" class="senator-grid" role="group" aria-labelledby="senator-group"></div>
           <p class="error" id="err-senators" aria-live="polite"></p>
@@ -261,11 +261,10 @@
 
       <dl class="summary-list" id="summary-list">
         <div class="summary-row"><dt>Student</dt><dd id="sum-student"></dd></div>
-        <div class="summary-row"><dt>Blood Drive</dt><dd id="sum-drive"></dd></div>
         <div class="summary-row"><dt>Date</dt><dd id="sum-date"></dd></div>
         <div class="summary-row"><dt>Location</dt><dd id="sum-location"></dd></div>
         <div class="summary-row"><dt>Appointment</dt><dd id="sum-slot"></dd></div>
-        <div class="summary-row"><dt>Signup helper(s)</dt><dd id="sum-senators"></dd></div>
+        <div class="summary-row"><dt>Senators who assisted you</dt><dd id="sum-senators"></dd></div>
         <div class="summary-row"><dt>Confirmation ID</dt><dd id="sum-confid"></dd></div>
       </dl>
 
@@ -291,7 +290,7 @@
     </section>
 
     <footer class="page-footer">
-      <p>Prototype: not yet approved for real student data. See README for district approval requirements.</p>
+      <p><a href="security.html">How we protect student information</a></p>
     </footer>
   </main>
 

@@ -362,7 +362,7 @@ export function validateForm(formEl, currentSelectedSlotId) {
   }
 
   if (selectedSenators.length === 0) {
-    setError("senators", "Select at least one signup helper.");
+    setError("senators", "Select at least one senator who assisted you.");
     valid = false;
   }
 
@@ -553,6 +553,7 @@ function announce(message) {
 // ============================================================================
 
 function showConfirmation({ firstName, lastName, senatorIds, appointmentSlotId, parentConsentRequired, confirmationId }) {
+  document.body.classList.add("confirmation-mode");
   form.classList.add("hidden");
   confirmationView.classList.remove("hidden");
 
@@ -563,7 +564,6 @@ function showConfirmation({ firstName, lastName, senatorIds, appointmentSlotId, 
     .join(", ");
 
   setText("sum-student", `${firstName} ${lastName}`);
-  setText("sum-drive", CONFIG.eventName);
   setText("sum-date", formatDisplayDate(CONFIG.bloodDriveDate, { weekday: true }));
   setText("sum-location", CONFIG.location);
   setText("sum-slot", slot ? slot.label : "");
@@ -588,6 +588,7 @@ function resetForm() {
   consentBanner.classList.add("hidden");
   document.querySelectorAll(".senator-chip.checked").forEach((el) => el.classList.remove("checked"));
 
+  document.body.classList.remove("confirmation-mode");
   confirmationView.classList.add("hidden");
   form.classList.remove("hidden");
 

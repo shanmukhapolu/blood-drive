@@ -542,7 +542,7 @@ input[aria-invalid="true"] {
 }
 
 /* ==========================================================================
-   Signup helper / slot grids
+   Senator / slot grids
    ========================================================================== */
 .senator-grid {
   display: grid;
@@ -810,5 +810,205 @@ input[aria-invalid="true"] {
 
   .confirmation-actions .btn {
     min-width: 100%;
+  }
+}
+
+/* ==========================================================================
+   Modern minimal refresh
+   ========================================================================== */
+body {
+  background:
+    radial-gradient(circle at top left, rgba(14, 96, 171, 0.08), transparent 34rem),
+    linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+}
+
+.page-shell {
+  max-width: 1040px;
+  padding-top: 52px;
+}
+
+.hero,
+.about,
+.notice,
+.card {
+  border-color: rgba(148, 163, 184, 0.24);
+}
+
+.hero {
+  background: linear-gradient(135deg, #0f172a 0%, #164e7a 56%, #0e7490 100%);
+  padding: 42px;
+  margin-bottom: 24px;
+}
+
+.about,
+.card {
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 24px 60px -36px rgba(15, 23, 42, 0.35);
+}
+
+.about {
+  padding: 34px;
+  margin-bottom: 24px;
+}
+
+.notice {
+  margin-bottom: 24px;
+}
+
+.card {
+  padding: 44px;
+}
+
+legend {
+  padding-bottom: 16px;
+  margin-bottom: 22px;
+}
+
+fieldset {
+  margin-bottom: 46px;
+}
+
+.field,
+.field-group {
+  margin-bottom: 28px;
+}
+
+input[type="text"],
+input[type="email"],
+input[type="tel"],
+input[type="date"],
+.senator-chip,
+.slot-btn {
+  border-color: #d7dee8;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02);
+}
+
+input[type="text"],
+input[type="email"],
+input[type="tel"],
+input[type="date"] {
+  padding: 15px 16px;
+  border-radius: 14px;
+}
+
+.senator-grid {
+  gap: 10px;
+}
+
+.senator-chip {
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+
+.slot-grid {
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 10px;
+}
+
+.slot-btn {
+  border-radius: 14px;
+  min-height: 64px;
+  padding: 12px 8px;
+}
+
+.btn {
+  border-radius: 14px;
+  padding: 14px 24px;
+}
+
+.privacy-footer {
+  margin-top: 24px;
+}
+
+.page-footer a {
+  color: var(--color-accent);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.page-footer a:hover {
+  text-decoration: underline;
+}
+
+body.confirmation-mode .hero,
+body.confirmation-mode .about,
+body.confirmation-mode .notice {
+  display: none;
+}
+
+body.confirmation-mode .page-shell {
+  max-width: 760px;
+}
+
+#confirmation-view {
+  margin-top: 56px;
+}
+
+.eyebrow-page {
+  margin: 0 0 8px;
+  color: var(--color-accent);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.privacy-card h1 {
+  margin: 0 0 10px;
+  font-family: var(--font-display);
+  font-size: clamp(32px, 5vw, 48px);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+}
+
+.privacy-intro {
+  max-width: 760px;
+  margin-bottom: 28px;
+}
+
+.security-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin: 28px 0;
+}
+
+.security-item {
+  padding: 20px;
+  border: 1px solid var(--color-border);
+  border-radius: 18px;
+  background: #f8fafc;
+}
+
+.security-item h2 {
+  margin: 0 0 8px;
+  font-family: var(--font-display);
+  font-size: 17px;
+  letter-spacing: -0.01em;
+}
+
+.security-item p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 14px;
+}
+
+.security-notice {
+  margin: 8px 0 24px;
+}
+
+@media (max-width: 640px) {
+  .page-shell {
+    padding-top: 24px;
+  }
+
+  .hero,
+  .about,
+  .card {
+    padding: 24px;
+  }
+
+  .security-grid {
+    grid-template-columns: 1fr;
   }
 }

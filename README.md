@@ -18,10 +18,10 @@ build step, no Firebase Auth sign-up request, and no student-facing accounts, da
 1. Student opens the URL and immediately sees the registration form (no
    homepage, nav bar, or marketing content).
 2. Student fills in their information, confirms eligibility, selects the
-   signup helper(s), and picks an open appointment slot.
+   senator(s) who assisted you, and picks an open appointment slot.
 3. Student submits the form.
 4. Student sees a confirmation screen with only the details they need
-   (name, drive, date, location, appointment, signup helper(s), confirmation ID)
+   (name, drive, date, location, appointment, senator(s) who assisted you, confirmation ID)
    and can print it or register another student.
 
 Students under 16 (as of the blood-drive date) cannot submit the form.
@@ -46,7 +46,7 @@ Files:
 |---|---|
 | `index.html` | Markup for the form and confirmation view. |
 | `style.css` | All styling. |
-| `config.js` | Single source of truth for event details, signup helpers, and time slots. |
+| `config.js` | Single source of truth for event details, senators, and time slots. |
 | `firebase-init.js` | Firebase app/auth/analytics initialization only; no UI logic. |
 | `app.js` | Form rendering, validation, eligibility logic, and submission. |
 | `firestore.rules` | Authoritative server-side access control (see Section 5). |
@@ -96,7 +96,7 @@ Non-PII capacity counters, optionally pre-seeded by an administrator or initiali
 | `bloodDriveId` | string | |
 | `slotId` | string | |
 | `label` | string | e.g. `"10:15 AM"`. |
-| `capacity` | number | Fixed at 4 by public-client creates; clients cannot change it after creation. |
+| `capacity` | number | Fixed at 10 by public-client creates; clients cannot change it after creation. |
 | `count` | number | Starts at 1 for first-registration initialization, then only mutable via a validated +1 increment (see rules). |
 
 ## 5. Security Model (MVP)
@@ -149,7 +149,7 @@ is not, and does not claim to be, "FERPA compliant" on its own.
    counter is missing, the first valid registration for that slot creates it
    atomically with `count: 1`:
    ```json
-   { "bloodDriveId": "chs-fall-2026", "slotId": "0900", "label": "9:00 AM", "capacity": 4, "count": 1 }
+   { "bloodDriveId": "chs-fall-2026", "slotId": "0900", "label": "9:00 AM", "capacity": 10, "count": 1 }
    ```
    Admin-created seed documents should use the same shape with `count: 0`.
    Never embed Admin SDK credentials in frontend code.
