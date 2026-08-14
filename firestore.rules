@@ -1,7 +1,7 @@
 rules_version = '2';
 
 // ============================================================================
-// Firestore Security Rules — Carmel HS Student Senate Blood Drive (MVP)
+// Firestore Security Rules — Carmel HS Blood Drive (MVP)
 //
 // THREAT MODEL / GOALS
 //   - No anonymous (or any) client may ever read a "registrations" document.
