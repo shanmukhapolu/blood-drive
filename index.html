@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <!--
+    PRIVACY NOTE: This page title intentionally contains no student data.
+    Do not add student names, IDs, or emails to the document title.
+  -->
+  <title>Blood Drive Registration · Carmel High School Student Senate</title>
+  <meta name="description" content="Carmel High School Student Senate Blood Drive registration form." />
+  <meta name="robots" content="noindex, nofollow" />
+  <link rel="icon" href="data:," />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="bg-page">
+
+  <!-- Live region for status/error announcements. Never populate with PII. -->
+  <div id="status-live" class="sr-only" role="status" aria-live="polite"></div>
+
+  <main class="page-shell">
+
+    <!-- ============================= HEADER ============================= -->
+    <header class="form-header">
+      <p class="eyebrow">Carmel High School &bull; Student Senate</p>
+      <h1 class="title">Blood Drive Registration</h1>
+      <p class="event-line" id="event-line">Fall 2026</p>
+      <p class="event-meta" id="event-meta">October 1, 2026 &middot; Carmel High School</p>
+    </header>
+
+    <div class="notice" role="note">
+      <p>
+        <strong>Before registering:</strong> you must meet the blood drive&rsquo;s eligibility
+        requirements. Students must be at least 16 years old on the blood-drive date and may not
+        be participating in a fall sport.
+      </p>
+    </div>
+
+    <!-- ============================= FORM VIEW ============================= -->
+    <form id="registration-form" class="card" novalidate>
+
+      <!-- Ineligible banner (hidden unless DOB makes student under 16) -->
+      <div id="ineligible-banner" class="banner banner-block hidden" role="alert">
+        <h2>Registration unavailable</h2>
+        <p>You must be at least 16 years old on the blood-drive date to register for this blood drive.</p>
+      </div>
+
+      <!-- Consent-required banner (exactly 16 on drive date) -->
+      <div id="consent-banner" class="banner banner-info hidden" role="status">
+        <h2>Parent/Guardian consent required</h2>
+        <p>
+          Because you will be 16 on the blood-drive date, a parent/guardian must complete the
+          required consent process before you can donate.
+        </p>
+      </div>
+
+      <fieldset id="fieldset-student">
+        <legend>Student Information</legend>
+
+        <div class="field">
+          <label for="legalName">Student Legal Name <span class="req" aria-hidden="true">*</span></label>
+          <input type="text" id="legalName" name="legalName" autocomplete="name" placeholder="First and last name" maxlength="80" required />
+          <p class="error" id="err-legalName" aria-live="polite"></p>
+        </div>
+
+        <div class="field">
+          <label for="studentEmail">Student Personal Email <span class="req" aria-hidden="true">*</span></label>
+          <p class="help">Please use a personal email address, not your Carmel High School email.</p>
+          <input type="email" id="studentEmail" name="studentEmail" autocomplete="email" placeholder="you@example.com" maxlength="120" required />
+          <p class="error" id="err-studentEmail" aria-live="polite"></p>
+        </div>
+
+        <div class="field">
+          <label for="parentEmail">Parent/Guardian Email <span class="req" aria-hidden="true">*</span></label>
+          <p class="help">Required for all registrations. Students who are 16 will need parent/guardian consent.</p>
+          <input type="email" id="parentEmail" name="parentEmail" autocomplete="email" placeholder="parent@example.com" maxlength="120" required />
+          <p class="error" id="err-parentEmail" aria-live="polite"></p>
+        </div>
+
+        <div class="field">
+          <label for="phone">Student Phone Number <span class="req" aria-hidden="true">*</span></label>
+          <input type="tel" id="phone" name="phone" autocomplete="tel" placeholder="(317) 555-0100" maxlength="20" required />
+          <p class="error" id="err-phone" aria-live="polite"></p>
+        </div>
+
+        <div class="field">
+          <label for="dob">Date of Birth <span class="req" aria-hidden="true">*</span></label>
+          <input type="date" id="dob" name="dob" autocomplete="bday" required />
+          <p class="error" id="err-dob" aria-live="polite"></p>
+        </div>
+
+        <div class="field">
+          <label for="studentId">Student ID Number <span class="req" aria-hidden="true">*</span></label>
+          <input type="text" id="studentId" name="studentId" inputmode="numeric" maxlength="15" placeholder="e.g. 123456" required />
+          <p class="error" id="err-studentId" aria-live="polite"></p>
+        </div>
+      </fieldset>
+
+      <fieldset id="fieldset-eligibility">
+        <legend>Eligibility Confirmation</legend>
+
+        <div class="checkbox-row">
+          <input type="checkbox" id="eligAge" name="eligAge" required />
+          <label for="eligAge">I confirm that I will be at least 16 years old on the blood-drive date.</label>
+        </div>
+        <p class="error" id="err-eligAge" aria-live="polite"></p>
+
+        <div class="checkbox-row">
+          <input type="checkbox" id="eligNoSport" name="eligNoSport" required />
+          <label for="eligNoSport">I confirm that I am not participating in a fall sport.</label>
+        </div>
+        <p class="error" id="err-eligNoSport" aria-live="polite"></p>
+      </fieldset>
+
+      <fieldset id="fieldset-appointment">
+        <legend>Appointment</legend>
+
+        <div class="field">
+          <label for="senator-group">Senator(s) who assisted with signup <span class="req" aria-hidden="true">*</span></label>
+          <p class="help">Select all that apply.</p>
+          <div id="senator-group" class="senator-grid" role="group" aria-labelledby="senator-group"></div>
+          <p class="error" id="err-senators" aria-live="polite"></p>
+        </div>
+
+        <div class="field">
+          <span class="field-label">Time Slot <span class="req" aria-hidden="true">*</span></span>
+          <div id="slot-grid" class="slot-grid" role="group" aria-label="Available appointment times"></div>
+          <p class="error" id="err-slot" aria-live="polite"></p>
+        </div>
+      </fieldset>
+
+      <div class="submit-row">
+        <p class="error" id="err-submit" aria-live="polite"></p>
+        <button type="submit" id="submit-btn" class="btn btn-primary">Register for the Blood Drive</button>
+      </div>
+
+      <p class="privacy-footer">
+        Information submitted through this form is used for blood-drive registration and
+        administration and is handled according to school-approved privacy and data-retention
+        requirements.
+      </p>
+    </form>
+
+    <!-- ============================= CONFIRMATION VIEW ============================= -->
+    <section id="confirmation-view" class="card hidden" aria-labelledby="confirmation-title">
+      <h2 id="confirmation-title">Registration Confirmed</h2>
+      <p class="subtitle">Keep this information for your records.</p>
+
+      <dl class="summary-list" id="summary-list">
+        <div class="summary-row"><dt>Student</dt><dd id="sum-student"></dd></div>
+        <div class="summary-row"><dt>Blood Drive</dt><dd id="sum-drive"></dd></div>
+        <div class="summary-row"><dt>Date</dt><dd id="sum-date"></dd></div>
+        <div class="summary-row"><dt>Location</dt><dd id="sum-location"></dd></div>
+        <div class="summary-row"><dt>Appointment</dt><dd id="sum-slot"></dd></div>
+        <div class="summary-row"><dt>Senator(s)</dt><dd id="sum-senators"></dd></div>
+        <div class="summary-row"><dt>Confirmation ID</dt><dd id="sum-confid"></dd></div>
+      </dl>
+
+      <div id="consent-download-block" class="banner banner-info hidden">
+        <h2>Parent/Guardian consent required</h2>
+        <p>
+          Because you will be 16 on the blood-drive date, your parent/guardian must complete the
+          required consent process before you can donate.
+        </p>
+        <a id="consent-download-link" class="btn btn-secondary" href="assets/parent-consent-placeholder.txt" download>
+          Download Parent Consent Form
+        </a>
+        <p class="fine-print">
+          NOT AN OFFICIAL CONSENT FORM — placeholder for MVP only. Follow the instructions provided
+          with the official form for returning the completed document.
+        </p>
+      </div>
+
+      <div class="confirmation-actions">
+        <button type="button" id="print-btn" class="btn btn-secondary">Print Summary</button>
+        <button type="button" id="reset-btn" class="btn btn-secondary">Register Another Student</button>
+      </div>
+    </section>
+
+    <footer class="page-footer">
+      <p>Prototype — not yet approved for real student data. See README for district approval requirements.</p>
+    </footer>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

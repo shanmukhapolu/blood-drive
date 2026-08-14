@@ -1,0 +1,13 @@
+{
+  "name": "carmel-blood-drive-registration",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Carmel High School Student Senate Blood Drive Registration System (MVP prototype).",
+  "scripts": {
+    "dev": "http-server . -p 3000 -c-1 -a 0.0.0.0",
+    "start": "http-server . -p 3000 -c-1 -a 0.0.0.0"
+  },
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  }
+}

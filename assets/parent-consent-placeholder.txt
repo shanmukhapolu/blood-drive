@@ -1,0 +1,18 @@
+NOT AN OFFICIAL CONSENT FORM
+=============================
+
+This file is a placeholder only. It is included in the MVP prototype so the
+"Download Parent Consent Form" link has something to point to during
+development and review.
+
+It is NOT the official parent/guardian consent document, and it must not be
+used to collect real consent for a real student.
+
+Before this system is used with real students, replace this file with the
+exact consent document and return-instructions approved by:
+  - Carmel Clay Schools, and
+  - the blood-drive provider (e.g. the American Red Cross or Versiti).
+
+Follow the instructions provided with the official form for how the
+completed document should be returned (e.g. paper copy to the front office,
+a specific staff member, or an approved digital process).

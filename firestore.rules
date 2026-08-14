@@ -1,0 +1,128 @@
+rules_version = '2';
+
+// ============================================================================
+// Firestore Security Rules — Carmel HS Student Senate Blood Drive (MVP)
+//
+// THREAT MODEL / GOALS
+//   - No anonymous (or any) client may ever read a "registrations" document.
+//   - No client may ever update or delete a "registrations" document.
+//   - A client may create a "registrations" document ONLY if it exactly
+//     matches the expected, narrowly-validated schema for the current
+//     blood drive.
+//   - "slotCounts" documents contain no PII (just a capacity + a count) and
+//     may be read by an authenticated (anonymous is fine) client so the UI
+//     can show live availability. They may only be UPDATED by incrementing
+//     `count` by exactly 1, and never past `capacity`. They can never be
+//     created or deleted by a client — they must be seeded ahead of time by
+//     an administrator (see README.md).
+//   - Every other path is default-denied.
+//
+// This ruleset is the authoritative enforcement point for the MVP. It is
+// intentionally strict. See README.md "Production Requirements" for why a
+// trusted backend (Cloud Function) is still required before this collects
+// real student data: these rules cannot rate-limit, cannot detect duplicate
+// registrations (they have no read access to compare against), and cannot
+// independently re-verify eligibility beyond basic type/range checks.
+// ============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ------------------------------------------------------------------
+    // registrations
+    // ------------------------------------------------------------------
+    match /registrations/{registrationId} {
+      allow read: if false;
+      allow update: if false;
+      allow delete: if false;
+
+      allow create: if request.auth != null
+        && isValidRegistration(request.resource.data);
+    }
+
+    // ------------------------------------------------------------------
+    // slotCounts — non-PII capacity counters, one document per
+    // "{bloodDriveId}_{slotId}". Must be pre-seeded by an administrator
+    // with { bloodDriveId, slotId, label, capacity, count: 0 }.
+    // ------------------------------------------------------------------
+    match /slotCounts/{slotDocId} {
+      allow read: if request.auth != null;
+      allow create: if false;
+      allow delete: if false;
+
+      allow update: if request.auth != null
+        && isValidSlotIncrement(resource.data, request.resource.data);
+    }
+
+    // ------------------------------------------------------------------
+    // Default deny for every other path in the database.
+    // ------------------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
+// ==========================================================================
+// Validation helpers
+// ==========================================================================
+
+function isValidRegistration(data) {
+  return data.keys().hasOnly([
+      'schemaVersion', 'bloodDriveId', 'bloodDriveDate', 'location',
+      'legalName', 'studentEmail', 'parentEmail', 'phone', 'dob',
+      'studentId', 'senatorIds', 'appointmentSlotId', 'ageOnDriveDate',
+      'parentConsentStatus', 'eligibilityAgeConfirmed',
+      'eligibilityNoFallSportConfirmed', 'createdAt'
+    ])
+    && data.keys().hasAll([
+      'schemaVersion', 'bloodDriveId', 'bloodDriveDate', 'location',
+      'legalName', 'studentEmail', 'parentEmail', 'phone', 'dob',
+      'studentId', 'senatorIds', 'appointmentSlotId', 'ageOnDriveDate',
+      'parentConsentStatus', 'eligibilityAgeConfirmed',
+      'eligibilityNoFallSportConfirmed', 'createdAt'
+    ])
+
+    && data.schemaVersion == 1
+
+    && data.bloodDriveId is string && data.bloodDriveId.size() > 0 && data.bloodDriveId.size() <= 60
+    && data.bloodDriveDate is string && data.bloodDriveDate.size() == 10
+    && data.location is string && data.location.size() > 0 && data.location.size() <= 120
+
+    && data.legalName is string && data.legalName.size() >= 2 && data.legalName.size() <= 80
+    && data.studentEmail is string && data.studentEmail.size() >= 5 && data.studentEmail.size() <= 120
+    && data.parentEmail is string && data.parentEmail.size() >= 5 && data.parentEmail.size() <= 120
+    && data.phone is string && data.phone.size() >= 7 && data.phone.size() <= 20
+    && data.dob is string && data.dob.size() == 10
+    && data.studentId is string && data.studentId.size() >= 3 && data.studentId.size() <= 15
+
+    && data.senatorIds is list && data.senatorIds.size() >= 1 && data.senatorIds.size() <= 6
+
+    && data.appointmentSlotId is string && data.appointmentSlotId.size() > 0 && data.appointmentSlotId.size() <= 10
+
+    // Basic sanity bounds only — NOT an authoritative recomputation of age.
+    // A trusted backend must independently re-derive age from `dob` and
+    // `bloodDriveDate` before this data is treated as production-ready.
+    && data.ageOnDriveDate is int && data.ageOnDriveDate >= 16 && data.ageOnDriveDate <= 100
+
+    && data.parentConsentStatus is string
+    && (data.parentConsentStatus == 'required' || data.parentConsentStatus == 'not_required')
+
+    && data.eligibilityAgeConfirmed == true
+    && data.eligibilityNoFallSportConfirmed == true
+
+    && data.createdAt == request.time;
+}
+
+function isValidSlotIncrement(before, after) {
+  return before.keys().hasAll(['capacity', 'count'])
+    && after.keys().hasAll(['capacity', 'count'])
+    && before.capacity is int
+    && after.capacity == before.capacity
+    && after.count is int
+    && after.count == before.count + 1
+    && after.count <= after.capacity
+    // Every other field on the document (bloodDriveId, slotId, label, ...)
+    // must remain unchanged by a client update.
+    && after.diff(before).affectedKeys().hasOnly(['count']);
+}
