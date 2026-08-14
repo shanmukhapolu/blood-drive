@@ -8,7 +8,7 @@
 //   - exposing the Firestore instance and a couple of narrow helpers
 //
 // ----------------------------------------------------------------------------
-// SECURITY NOTE — read before editing this file
+// SECURITY NOTE: read before editing this file
 // ----------------------------------------------------------------------------
 // The Firebase web config below (apiKey, projectId, etc.) is NOT a secret.
 // It identifies which Firebase project this client talks to, the same way a
@@ -16,11 +16,9 @@
 // visible in frontend code / browser dev tools.
 //
 // Actual security comes from:
-//   1. Firestore Security Rules (see firestore.rules) — these are enforced
+//   1. Firestore Security Rules (see firestore.rules); these are enforced
 //      by Firebase's servers and cannot be bypassed by editing client code.
-//   2. Firebase App Check (placeholder below) — helps confirm requests come
-//      from the real app, not a script or bot.
-//   3. In production, a trusted backend (Cloud Function) that re-validates
+//   2. In production, a trusted backend (Cloud Function) that re-validates
 //      everything the client claims before writing to Firestore.
 //
 // This file must NEVER contain:
@@ -35,10 +33,6 @@ import {
   signInAnonymously,
   onAuthStateChanged,
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js";
-import {
-  initializeAppCheck,
-  ReCaptchaEnterpriseProvider,
-} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app-check.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
 
 // Firebase web configuration for the "blood-drive-test" project. The Web API
@@ -54,33 +48,6 @@ const firebaseConfig = {
 };
 
 export const app = initializeApp(firebaseConfig);
-
-// ----------------------------------------------------------------------------
-// Firebase App Check (PRODUCTION-ONLY PLACEHOLDER)
-// ----------------------------------------------------------------------------
-// App Check helps reduce abuse (bots, scripted registration attempts) by
-// attesting that requests come from this real, approved app instance. It is
-// a DEFENSE-IN-DEPTH measure and is NOT a replacement for Firestore Security
-// Rules — rules remain the authoritative access control.
-//
-// Replace "REPLACE_WITH_APP_CHECK_SITE_KEY" with the reCAPTCHA Enterprise (or
-// district-approved) App Check site key created for the approved production
-// domain before this app collects any real student data. Do not invent or
-// guess a real site key.
-const appCheckSiteKey = "REPLACE_WITH_APP_CHECK_SITE_KEY";
-let appCheck = null;
-try {
-  if (appCheckSiteKey !== "REPLACE_WITH_APP_CHECK_SITE_KEY") {
-    appCheck = initializeAppCheck(app, {
-      provider: new ReCaptchaEnterpriseProvider(appCheckSiteKey),
-      isTokenAutoRefreshEnabled: true,
-    });
-  }
-} catch (_err) {
-  // App Check is optional for local prototyping; failures here must never
-  // block the rest of the app from loading.
-  appCheck = null;
-}
 
 export const auth = getAuth(app);
 export const db = getFirestore(app);
@@ -100,7 +67,7 @@ analyticsIsSupported()
   });
 
 // Allow-listed, non-PII event names only. Do NOT pass student names, emails,
-// IDs, phone numbers, or dates of birth as event parameters — see PII
+// IDs, phone numbers, or dates of birth as event parameters; see PII
 // protection requirements in README.md.
 const ALLOWED_EVENTS = new Set([
   "blood_drive_form_started",
@@ -129,7 +96,7 @@ export function logAnonymousEvent(eventName) {
  * write is attempted. Resolves with the signed-in user.
  *
  * The anonymous user is only ever granted the single, narrowly-scoped
- * "create a registration" permission in firestore.rules — it cannot read,
+ * "create a registration" permission in firestore.rules; it cannot read,
  * update, or delete anything.
  * @returns {Promise<import("https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js").User>}
  */

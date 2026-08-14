@@ -6,13 +6,13 @@
 // values throughout the codebase.
 //
 // NOTE: None of the values in this file are secret. Security comes from
-// Firestore Security Rules and (in production) a trusted backend — not from
+// Firestore Security Rules and (in production) a trusted backend, not from
 // hiding configuration values in the client.
 // ============================================================================
 
 export const CONFIG = {
   bloodDriveId: "chs-fall-2026",
-  bloodDriveDate: "2026-09-04", // ISO date (local, no time component) — Friday, Sept 4, 2026
+  bloodDriveDate: "2026-09-04", // ISO date (local, no time component), Friday, Sept 4, 2026
   eventName: "CHS Fall Blood Drive",
   location: "Fieldhouse",
   slotsStart: "0800", // 8:00 AM
@@ -25,7 +25,7 @@ export const CONFIG = {
   studentIdLength: 9,
 };
 
-// Known school email domain(s). This is a CONVENIENCE check only — it warns
+// Known school email domain(s). This is a CONVENIENCE check only; it warns
 // students who accidentally enter their school email instead of a personal
 // one. It is NOT a security control and must never be relied on as the sole
 // safeguard against a school-domain address reaching the database.
@@ -46,8 +46,8 @@ export const SENATORS = [
 
 /**
  * Builds the appointment-slot list from CONFIG.slotsStart to CONFIG.slotsEnd
- * (inclusive) in 15-minute increments. Keeping this generated — rather than
- * hand-typed — means the drive hours only ever need to change in one place.
+ * (inclusive) in 15-minute increments. Keeping this generated, rather than
+ * hand-typed, means the drive hours only ever need to change in one place.
  */
 function buildTimeSlots() {
   const toMinutes = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(2));
@@ -68,7 +68,7 @@ function buildTimeSlots() {
 }
 
 // Generated appointment slots with a starting capacity. The `capacity` value
-// is a display default only — see app.js and firestore.rules for how real
+// is a display default only; see app.js and firestore.rules for how real
 // capacity is meant to be tracked (a dedicated, non-PII slotCounts document
 // per slot, updated only via a validated, atomic transition).
 export const TIME_SLOTS = buildTimeSlots();

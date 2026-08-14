@@ -10,7 +10,7 @@
 //   - Never log student PII to the console.
 //   - Never put student PII into the URL, localStorage, or sessionStorage.
 //   - The client-side age/eligibility checks below are UX only. The
-//     authoritative check happens in firestore.rules, and — in production —
+//     authoritative check happens in firestore.rules, and, in production,
 //     must be re-verified by a trusted backend.
 // ============================================================================
 
@@ -41,7 +41,7 @@ const submitBtn = document.getElementById("submit-btn");
 const errSubmit = document.getElementById("err-submit");
 
 // ----------------------------------------------------------------------------
-// Module state (in-memory only — never persisted to browser storage)
+// Module state (in-memory only; never persisted to browser storage)
 // ----------------------------------------------------------------------------
 let selectedSlotId = null;
 let slotAvailability = {}; // { [slotId]: { capacity, count } }
@@ -98,13 +98,13 @@ function formatDisplayDate(isoDate, { weekday = false } = {}) {
 }
 
 function isLikelyValidEmail(value) {
-  // Intentionally simple syntax check — not a full RFC 5322 validator.
+  // Intentionally simple syntax check, not a full RFC 5322 validator.
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
 /**
  * Convenience-only check for a known school email domain. NOT a security
- * control — see SCHOOL_EMAIL_DOMAINS in config.js.
+ * control; see SCHOOL_EMAIL_DOMAINS in config.js.
  */
 function isSchoolDomainEmail(value) {
   const at = value.lastIndexOf("@");
@@ -145,7 +145,7 @@ function renderSenatorOptions() {
     });
 
     const text = document.createElement("span");
-    text.textContent = senator.name; // textContent only — never innerHTML
+    text.textContent = senator.name; // textContent only; never innerHTML
 
     label.appendChild(input);
     label.appendChild(text);
@@ -198,7 +198,7 @@ function renderAppointmentSlots() {
 
 /**
  * Best-effort read of current slot capacity/count for display purposes only.
- * This is NOT the security boundary — the atomic check happens inside the
+ * This is NOT the security boundary; the atomic check happens inside the
  * Firestore transaction in reserveSlotAndCreateRegistration(). If this read
  * fails (e.g. offline, not yet seeded), slots fall back to showing their
  * configured capacity with zero recorded registrations.
@@ -254,7 +254,7 @@ function updateEligibilityUI() {
 
 /**
  * Independently determines eligibility from date of birth. This result is
- * authoritative over the checkboxes — a checked eligibility checkbox can
+ * authoritative over the checkboxes; a checked eligibility checkbox can
  * never override an under-16 date of birth.
  * @param {string} dobValue - "YYYY-MM-DD"
  * @returns {{status: "invalid"|"ineligible"|"consent-required"|"eligible", age: number|null}}
@@ -493,7 +493,16 @@ async function submitRegistration(event) {
 
 function handleSubmissionError(error) {
   // Never surface raw Firebase error internals to the student.
-  const code = error && error.message;
+  const code = error && (error.code || error.message);
+
+  if (isAnonymousAuthConfigurationError(code)) {
+    setError(
+      "submit",
+      "Registration is not available because anonymous sign-in is not enabled for this Firebase project. Please contact the blood-drive organizers."
+    );
+    announce("Registration is not available. Please contact the blood-drive organizers.");
+    return;
+  }
 
   if (code === "SLOT_FULL" || code === "SLOT_UNAVAILABLE") {
     setError("slot", "That appointment just filled up. Please choose another time.");
@@ -507,6 +516,15 @@ function handleSubmissionError(error) {
     "We could not complete your registration. Please try again or contact the blood-drive organizers."
   );
   announce("We could not complete your registration. Please try again.");
+}
+
+function isAnonymousAuthConfigurationError(code) {
+  return [
+    "auth/admin-restricted-operation",
+    "auth/api-key-not-valid",
+    "auth/app-not-authorized",
+    "auth/operation-not-allowed",
+  ].includes(code);
 }
 
 function announce(message) {
@@ -543,7 +561,7 @@ function showConfirmation({ firstName, lastName, senatorIds, appointmentSlotId, 
 }
 
 function setText(id, value) {
-  document.getElementById(id).textContent = value; // textContent only — never innerHTML
+  document.getElementById(id).textContent = value; // textContent only; never innerHTML
 }
 
 function resetForm() {
