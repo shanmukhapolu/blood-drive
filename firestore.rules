@@ -97,7 +97,6 @@ function isValidRegistration(data) {
     && isValidSenatorList(data.senatorIds)
 
     && isValidAppointmentSlotId(data.appointmentSlotId)
-    && existsAfter(/databases/$(database)/documents/slotCounts/$(data.bloodDriveId + '_' + data.appointmentSlotId))
 
     // Basic sanity bounds only; NOT an authoritative recomputation of age.
     // A trusted backend must independently re-derive age from `dob` and
