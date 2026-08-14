@@ -4,7 +4,6 @@
 // Firebase initialization, kept intentionally separate from UI logic
 // (app.js). This module is responsible ONLY for:
 //   - initializing the Firebase app
-//   - anonymous authentication
 //   - exposing the Firestore instance and a couple of narrow helpers
 //
 // ----------------------------------------------------------------------------
@@ -28,11 +27,6 @@
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
 import { getAnalytics, logEvent, isSupported as analyticsIsSupported } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-analytics.js";
-import {
-  getAuth,
-  signInAnonymously,
-  onAuthStateChanged,
-} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
 
 // Firebase web configuration for the "blood-drive-test" project. The Web API
@@ -49,7 +43,6 @@ const firebaseConfig = {
 
 export const app = initializeApp(firebaseConfig);
 
-export const auth = getAuth(app);
 export const db = getFirestore(app);
 
 // Analytics is optional and may be unavailable (e.g. blocked by an ad
@@ -82,45 +75,11 @@ const ALLOWED_EVENTS = new Set([
  * analytics failed to initialize.
  * @param {string} eventName
  */
-export function logAnonymousEvent(eventName) {
+export function logSafeEvent(eventName) {
   if (!analyticsInstance || !ALLOWED_EVENTS.has(eventName)) return;
   try {
     logEvent(analyticsInstance, eventName);
   } catch (_err) {
     // Never let analytics errors surface to the student.
   }
-}
-
-/**
- * Ensures an anonymous Firebase Auth session exists before any Firestore
- * write is attempted. Resolves with the signed-in user.
- *
- * The anonymous user is only ever granted the single, narrowly-scoped
- * "create a registration" permission in firestore.rules; it cannot read,
- * update, or delete anything.
- * @returns {Promise<import("https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js").User>}
- */
-export function ensureAnonymousSession() {
-  return new Promise((resolve, reject) => {
-    const unsubscribe = onAuthStateChanged(
-      auth,
-      (user) => {
-        if (user) {
-          unsubscribe();
-          resolve(user);
-        }
-      },
-      (error) => {
-        unsubscribe();
-        reject(error);
-      }
-    );
-
-    if (!auth.currentUser) {
-      signInAnonymously(auth).catch((error) => {
-        unsubscribe();
-        reject(error);
-      });
-    }
-  });
 }

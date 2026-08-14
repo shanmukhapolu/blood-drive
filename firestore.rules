@@ -4,13 +4,13 @@ rules_version = '2';
 // Firestore Security Rules: Carmel HS Blood Drive (MVP)
 //
 // THREAT MODEL / GOALS
-//   - No anonymous (or any) client may ever read a "registrations" document.
+//   - No public client may ever read a "registrations" document.
 //   - No client may ever update or delete a "registrations" document.
-//   - A client may create a "registrations" document ONLY if it exactly
+//   - A public client may create a "registrations" document ONLY if it exactly
 //     matches the expected, narrowly-validated schema for the current
 //     blood drive.
 //   - "slotCounts" documents contain no PII (just a capacity + a count) and
-//     may be read by an authenticated (anonymous is fine) client so the UI
+//     may be read by the public registration page so the UI
 //     can show live availability. They may only be UPDATED by incrementing
 //     `count` by exactly 1, and never past `capacity`. They can never be
 //     created or deleted by a client; they must be seeded ahead of time by
@@ -36,8 +36,7 @@ service cloud.firestore {
       allow update: if false;
       allow delete: if false;
 
-      allow create: if request.auth != null
-        && isValidRegistration(request.resource.data);
+      allow create: if isValidRegistration(request.resource.data);
     }
 
     // ------------------------------------------------------------------
@@ -46,12 +45,11 @@ service cloud.firestore {
     // with { bloodDriveId, slotId, label, capacity, count: 0 }.
     // ------------------------------------------------------------------
     match /slotCounts/{slotDocId} {
-      allow read: if request.auth != null;
+      allow read: if true;
       allow create: if false;
       allow delete: if false;
 
-      allow update: if request.auth != null
-        && isValidSlotIncrement(resource.data, request.resource.data);
+      allow update: if isValidSlotIncrement(resource.data, request.resource.data);
     }
 
     // ------------------------------------------------------------------

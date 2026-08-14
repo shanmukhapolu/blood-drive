@@ -15,7 +15,7 @@
 // ============================================================================
 
 import { CONFIG, SCHOOL_EMAIL_DOMAINS, SENATORS, TIME_SLOTS } from "./config.js";
-import { db, ensureAnonymousSession, logAnonymousEvent } from "./firebase-init.js";
+import { db, logSafeEvent } from "./firebase-init.js";
 import {
   doc,
   getDoc,
@@ -246,7 +246,7 @@ function updateEligibilityUI() {
   submitBtn.disabled = disableSubmission || submissionInFlight;
 
   if (result.status === "ineligible" && dobValue !== "") {
-    logAnonymousEvent("blood_drive_ineligible_blocked");
+    logSafeEvent("blood_drive_ineligible_blocked");
   }
 
   return result;
@@ -404,7 +404,7 @@ export function validateForm(formEl, currentSelectedSlotId) {
  * transaction is an MVP-appropriate mechanism, but the ultimate trust
  * boundary for production must be a Cloud Function that re-validates
  * eligibility, rate-limits requests, and performs duplicate detection that
- * an anonymous client is not permitted to do (it cannot read `registrations`
+ * the public client is not permitted to do (it cannot read `registrations`
  * at all).
  */
 async function reserveSlotAndCreateRegistration(payload) {
@@ -469,10 +469,11 @@ async function submitRegistration(event) {
   submitBtn.textContent = "Registering…";
 
   try {
-    await ensureAnonymousSession();
+    logRegistrationStep("Submitting registration transaction");
     const confirmationId = await reserveSlotAndCreateRegistration({ ...payload, eligibility });
+    logRegistrationStep("Registration transaction completed");
 
-    logAnonymousEvent("blood_drive_registration_success");
+    logSafeEvent("blood_drive_registration_success");
     showConfirmation({
       firstName: payload.firstName,
       lastName: payload.lastName,
@@ -482,7 +483,7 @@ async function submitRegistration(event) {
       confirmationId,
     });
   } catch (error) {
-    logAnonymousEvent("blood_drive_registration_error");
+    logSafeEvent("blood_drive_registration_error");
     handleSubmissionError(error);
   } finally {
     submissionInFlight = false;
@@ -494,13 +495,14 @@ async function submitRegistration(event) {
 function handleSubmissionError(error) {
   // Never surface raw Firebase error internals to the student.
   const code = error && (error.code || error.message);
+  logRegistrationStep("Registration failed", { code: code || "unknown" });
 
-  if (isAnonymousAuthConfigurationError(code)) {
+  if (code === "permission-denied") {
     setError(
       "submit",
-      "Registration is not available because anonymous sign-in is not enabled for this Firebase project. Please contact the blood-drive organizers."
+      "Registration could not be saved because Firebase permissions blocked the request. Please ask the organizers to deploy the latest Firestore rules and confirm the appointment slots are seeded."
     );
-    announce("Registration is not available. Please contact the blood-drive organizers.");
+    announce("Registration could not be saved because Firebase permissions blocked the request.");
     return;
   }
 
@@ -518,13 +520,9 @@ function handleSubmissionError(error) {
   announce("We could not complete your registration. Please try again.");
 }
 
-function isAnonymousAuthConfigurationError(code) {
-  return [
-    "auth/admin-restricted-operation",
-    "auth/api-key-not-valid",
-    "auth/app-not-authorized",
-    "auth/operation-not-allowed",
-  ].includes(code);
+function logRegistrationStep(message, details = {}) {
+  // Safe diagnostics only. Do not include names, emails, phone numbers, DOB, or student IDs.
+  console.info("[blood-drive-registration]", message, details);
 }
 
 function announce(message) {
@@ -593,16 +591,14 @@ function init() {
   document.getElementById("print-btn").addEventListener("click", () => window.print());
   document.getElementById("reset-btn").addEventListener("click", resetForm);
 
-  logAnonymousEvent("blood_drive_form_started");
+  logSafeEvent("blood_drive_form_started");
 
-  // Best-effort session + slot availability warm-up. Failures here must not
-  // block the student from filling out the form.
-  ensureAnonymousSession()
-    .then(() => loadSlotAvailability())
-    .catch(() => {
-      // If anonymous auth fails (e.g. offline), slots simply show their
-      // configured capacity until the student submits and we retry.
-    });
+  // Best-effort slot availability warm-up. Failures here must not block the
+  // student from filling out the form. The submit transaction repeats the
+  // capacity check before it writes anything.
+  loadSlotAvailability().catch((error) => {
+    logRegistrationStep("Slot availability warm-up failed", { code: error?.code || error?.message || "unknown" });
+  });
 }
 
 document.addEventListener("DOMContentLoaded", init);

@@ -10,8 +10,8 @@
 This is a minimal, single-page registration form intended to replace the
 previous Jotform / SignUpGenius blood-drive signup workflow. It is built
 with plain HTML, CSS, and vanilla JavaScript (ES modules) and uses Firebase
-(Authentication + Firestore) for data storage. There is no framework, no
-build step, and no student-facing accounts, dashboard, or login screen.
+(Firestore) for data storage. There is no framework, no
+build step, no Firebase Auth sign-up request, and no student-facing accounts, dashboard, or login screen.
 
 ## 2. Student-Facing Workflow
 
@@ -34,10 +34,7 @@ parent/guardian consent notice and a placeholder consent-form download.
 Student Browser (index.html / app.js / firebase-init.js)
         |
         v
-Firebase Anonymous Authentication  ── required before any Firestore write
-        |
-        v
-Firestore (MVP: direct client transaction, see Section 16 below)
+Firestore (MVP: direct client transaction, see Section 15 below)
         |
         +--> slotCounts/{bloodDriveId}_{slotId}   (read + narrowly validated increment)
         +--> registrations/{autoId}               (create-only, narrowly validated)
@@ -53,7 +50,7 @@ Files:
 | `firebase-init.js` | Firebase app/auth/analytics initialization only; no UI logic. |
 | `app.js` | Form rendering, validation, eligibility logic, and submission. |
 | `firestore.rules` | Authoritative server-side access control (see Section 5). |
-| `firestore.indexes.json` | Intentionally empty; see Section 10. |
+| `firestore.indexes.json` | Intentionally empty; see Section 9. |
 | `firebase.json` | Firebase Hosting + Firestore deployment configuration. |
 | `assets/parent-consent-placeholder.txt` | Placeholder only; **not** an official consent form. |
 
@@ -79,7 +76,7 @@ the student's Student ID, email, or any other identifying value.
 | `studentId` | string | Never used as a document ID or exposed in a URL. |
 | `senatorIds` | array&lt;string&gt; | 1–6 entries. |
 | `appointmentSlotId` | string | e.g. `"1015"`. |
-| `ageOnDriveDate` | number | Client-computed; rules only sanity-check the range. **Not authoritative**; see Section 11. |
+| `ageOnDriveDate` | number | Client-computed; rules only sanity-check the range. **Not authoritative**; see Section 10. |
 | `parentConsentStatus` | string | `"required"` or `"not_required"`. |
 | `eligibilityAgeConfirmed` | boolean | Must be `true`. |
 | `eligibilityNoFallSportConfirmed` | boolean | Must be `true`. |
@@ -88,11 +85,11 @@ the student's Student ID, email, or any other identifying value.
 
 Deliberately **not** collected: IP address, browser fingerprint, device ID,
 passwords, medical/screening information, blood type, or any analytics
-identifiers tied to a specific student. See Section 8.
+identifiers tied to a specific student.
 
 ### `slotCounts/{bloodDriveId}_{slotId}`
 
-Non-PII capacity counters, pre-seeded by an administrator (see Section 8).
+Non-PII capacity counters, pre-seeded by an administrator (see Section 7).
 
 | Field | Type | Notes |
 |---|---|---|
@@ -105,11 +102,11 @@ Non-PII capacity counters, pre-seeded by an administrator (see Section 8).
 ## 5. Security Model (MVP)
 
 - **No public reads.** `registrations` cannot be read by anyone from the
-  client; not the submitting student, not another student, not an
-  anonymous visitor. `allow read: if false;` is unconditional.
+  client, not the submitting student, not another student, and not a
+  public visitor. `allow read: if false;` is unconditional.
 - **No updates or deletes** of `registrations` from the client, ever.
 - **Narrowly validated create only.** A `registrations` document can only
-  be created if it is authenticated (anonymous auth counts) and matches an
+  be created if it matches an
   exact allow-listed field set, correct types, length bounds, an
   `ageOnDriveDate` sanity range, both eligibility booleans `true`, the
   current `schemaVersion`, and a server-set `createdAt`. Unexpected fields
@@ -123,9 +120,9 @@ Non-PII capacity counters, pre-seeded by an administrator (see Section 8).
   write: if false; }`.
 - **No admin dashboard exists in this codebase.** There is no `/admin`
   route, no admin UI, and no rule that grants any authenticated user broad
-  read access (a rule like `allow read: if request.auth != null;` on
-  `registrations` would let *every* anonymous visitor read *every*
-  student's data; this repository deliberately does not do that).
+  read access (any broad read rule on
+  `registrations` would let visitors read student data; this repository
+  deliberately does not do that).
 
 ## 6. FERPA / Privacy Limitations
 
@@ -140,19 +137,7 @@ Carmel Clay Schools technology/privacy personnel.
 This system is **designed to support district privacy requirements**; it
 is not, and does not claim to be, "FERPA compliant" on its own.
 
-## 7. Authentication Setup
-
-- Enable **Anonymous** sign-in under Firebase Authentication > Sign-in
-  method.
-- The anonymous user is granted exactly one capability by
-  `firestore.rules`: creating a schema-valid `registrations` document (plus
-  reading/incrementing `slotCounts`). It cannot read anything back.
-- There are no student accounts, no passwords, and no login screen.
-- Re-evaluate with district technology staff whether anonymous auth is the
-  right long-term choice, or whether a district-issued identity should
-  gate access instead.
-
-## 8. Firestore Setup
+## 7. Firestore Setup
 
 1. Create/select the Firebase project referenced in `firebase-init.js`
    (`blood-drive-test`) or your own project, and update the config there.
@@ -169,7 +154,7 @@ is not, and does not claim to be, "FERPA compliant" on its own.
 4. Set the real Firebase Web API key in `firebase-init.js` (this value is
    not a secret; see the comment in that file for why).
 
-## 9. Rules Deployment
+## 8. Rules Deployment
 
 ```bash
 firebase deploy --only firestore:rules
@@ -178,7 +163,7 @@ firebase deploy --only firestore:rules
 Review `firestore.rules` with district technology staff before deploying
 against a project containing real student data.
 
-## 10. Local Testing
+## 9. Local Testing
 
 ```bash
 pnpm install
@@ -192,11 +177,10 @@ direct document ID, **no composite indexes are required**;
 query (e.g. an approved admin export), document why each new index exists
 in this file's comments before adding it.
 
-To test the full flow, seed at least one `slotCounts` document (Section 8),
-open the page, fill out the form with **fictional data only** (see Section
-15), and submit.
+To test the full flow, seed at least one `slotCounts` document (Section 7),
+open the page, fill out the form with **fictional data only**, and submit.
 
-## 11. Production Requirements
+## 10. Production Requirements
 
 This MVP is a *starting point*, not a production-ready system. Before real
 students use it:
@@ -212,12 +196,11 @@ students use it:
   - duplicate registrations are detected (the client cannot do this; it
     has no read access to `registrations`);
   - requests are rate-limited;
-- **District-approved authentication model** should be reassessed; is
-  anonymous auth acceptable, or does the district require something else?
-- **Retention policy** must be defined by the district (Section 12).
+- **District-approved access model** should be reassessed before production.
+- **Retention policy** must be defined by the district (Section 11).
 - **Official consent form** must replace the placeholder in `assets/`.
 
-## 12. Data Retention Considerations
+## 11. Data Retention Considerations
 
 Retention period to be determined and approved by Carmel Clay Schools.
 Before production use, the district must decide and document:
@@ -227,19 +210,19 @@ Before production use, the district must decide and document:
 - Who is authorized to access them (and how that access is enforced).
 - How backups are handled and how long they persist.
 - How/whether any export process works (e.g. to a school-controlled Google
-  Sheet; see Section 14) and what happens to exported copies.
+  Sheet; see Section 13) and what happens to exported copies.
 - What happens to the data after the blood drive concludes.
 - Whether the blood-drive provider (e.g. the Red Cross) receives any
   information, and under what data-sharing agreement.
 - Whether parent/guardian consent records are stored separately from this
   system, and if so, where and under what retention rules.
 
-## 13. Admin Access Considerations
+## 12. Admin Access Considerations
 
 This MVP intentionally ships **no admin dashboard or `/admin` route**. If
 one is built in the future, it must, at minimum:
 
-- Use district-approved authentication (not anonymous auth).
+- Use district-approved authentication.
 - Use role-based access with least-privilege custom claims.
 - Never grant blanket `allow read: if request.auth != null;` on
   `registrations`; that would let every authenticated user (including
@@ -247,9 +230,9 @@ one is built in the future, it must, at minimum:
   record.
 - Log administrative access (audit logging) without logging student PII in
   those logs any more than necessary.
-- Never be reachable by anonymous or public traffic.
+- Never be reachable by public traffic.
 
-## 14. Future Google Sheets Integration
+## 13. Future Google Sheets Integration
 
 Not implemented in this MVP. When approved, the intended design is: a
 school-controlled, server-side process (e.g. a Cloud Function using a
@@ -259,7 +242,7 @@ Google Sheet. Google service-account credentials and Apps Script secrets
 must never be placed in frontend JavaScript, and no public endpoint should
 ever accept arbitrary student data destined for a spreadsheet.
 
-## 15. Future Notification Integration
+## 14. Future Notification Integration
 
 Not implemented in this MVP. `studentEmail`, `parentEmail`, and `phone` are
 captured so that a future, separately-approved notification system
@@ -267,7 +250,7 @@ captured so that a future, separately-approved notification system
 not send any email or SMS today. Any such system requires its own school
 approval before going live.
 
-## 16. Appointment Transaction Requirements
+## 15. Appointment Transaction Requirements
 
 `app.js` uses a single Firestore `runTransaction()` that:
 
@@ -281,11 +264,11 @@ approval before going live.
 `firestore.rules` independently re-validates the increment (exactly +1,
 never past `capacity`, no other field changed) and the registration schema,
 so this guarantee does not depend on trusting the browser. As noted in
-Section 11, production should still move final authority to a Cloud
+Section 10, production should still move final authority to a Cloud
 Function for rate limiting and duplicate detection that rules alone cannot
 provide.
 
-## 17. Security Checklist
+## 16. Security Checklist
 
 - [x] No public Firestore reads (`registrations`: `allow read: if false;`)
 - [x] No public Firestore writes without validation (create is schema-validated; update/delete are `false`)
@@ -302,20 +285,20 @@ provide.
 - [x] No student data in page source except what the current user typed
 - [x] No raw Firebase errors shown to students
 - [x] No `innerHTML` with user-controlled data (`textContent` throughout)
-- [x] Anonymous users cannot read registrations
-- [x] Anonymous users cannot modify registrations
-- [x] Anonymous users cannot delete registrations
+- [x] Public clients cannot read registrations
+- [x] Public clients cannot modify registrations
+- [x] Public clients cannot delete registrations
 - [x] Students cannot access other students' information
 - [x] Admin access is not publicly exposed (no admin UI exists in this MVP)
 - [x] Appointment capacity cannot be bypassed by manipulating frontend JavaScript (enforced by `firestore.rules`, not just `app.js`)
-- [ ] Production architecture includes server-side validation *(Cloud Function; not yet built; see Section 11)*
+- [ ] Production architecture includes server-side validation *(Cloud Function; not yet built; see Section 10)*
 - [ ] Production architecture includes rate limiting *(requires a backend; not possible from rules alone)*
-- [x] Production architecture uses atomic appointment reservation *(implemented via Firestore transaction + rules; see Section 16)*
-- [ ] Duplicate registrations are handled server-side *(not possible from an anonymous client with no read access; requires Section 11's Cloud Function)*
-- [ ] Retention policy is explicitly determined before production *(Section 12)*
+- [x] Production architecture uses atomic appointment reservation *(implemented via Firestore transaction + rules; see Section 15)*
+- [ ] Duplicate registrations are handled server-side *(not possible from a public client with no read access; requires Section 10's Cloud Function)*
+- [ ] Retention policy is explicitly determined before production *(Section 11)*
 - [ ] District technology/privacy approval is required before real student data is collected
 
-## 18. District Approval Checklist
+## 17. District Approval Checklist
 
 Before this system collects any real student data, confirm with Carmel
 Clay Schools technology/privacy staff:
