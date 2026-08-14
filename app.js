@@ -10,12 +10,12 @@
 //   - Never log student PII to the console.
 //   - Never put student PII into the URL, localStorage, or sessionStorage.
 //   - The client-side age/eligibility checks below are UX only. The
-//     authoritative check happens in firestore.rules, and — in production —
+//     authoritative check happens in firestore.rules, and, in production,
 //     must be re-verified by a trusted backend.
 // ============================================================================
 
 import { CONFIG, SCHOOL_EMAIL_DOMAINS, SENATORS, TIME_SLOTS } from "./config.js";
-import { db, ensureAnonymousSession, logAnonymousEvent } from "./firebase-init.js";
+import { db, logSafeEvent } from "./firebase-init.js";
 import {
   doc,
   getDoc,
@@ -41,7 +41,7 @@ const submitBtn = document.getElementById("submit-btn");
 const errSubmit = document.getElementById("err-submit");
 
 // ----------------------------------------------------------------------------
-// Module state (in-memory only — never persisted to browser storage)
+// Module state (in-memory only; never persisted to browser storage)
 // ----------------------------------------------------------------------------
 let selectedSlotId = null;
 let slotAvailability = {}; // { [slotId]: { capacity, count } }
@@ -98,13 +98,13 @@ function formatDisplayDate(isoDate, { weekday = false } = {}) {
 }
 
 function isLikelyValidEmail(value) {
-  // Intentionally simple syntax check — not a full RFC 5322 validator.
+  // Intentionally simple syntax check, not a full RFC 5322 validator.
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
 /**
  * Convenience-only check for a known school email domain. NOT a security
- * control — see SCHOOL_EMAIL_DOMAINS in config.js.
+ * control; see SCHOOL_EMAIL_DOMAINS in config.js.
  */
 function isSchoolDomainEmail(value) {
   const at = value.lastIndexOf("@");
@@ -145,7 +145,7 @@ function renderSenatorOptions() {
     });
 
     const text = document.createElement("span");
-    text.textContent = senator.name; // textContent only — never innerHTML
+    text.textContent = senator.name; // textContent only; never innerHTML
 
     label.appendChild(input);
     label.appendChild(text);
@@ -198,7 +198,7 @@ function renderAppointmentSlots() {
 
 /**
  * Best-effort read of current slot capacity/count for display purposes only.
- * This is NOT the security boundary — the atomic check happens inside the
+ * This is NOT the security boundary; the atomic check happens inside the
  * Firestore transaction in reserveSlotAndCreateRegistration(). If this read
  * fails (e.g. offline, not yet seeded), slots fall back to showing their
  * configured capacity with zero recorded registrations.
@@ -246,7 +246,7 @@ function updateEligibilityUI() {
   submitBtn.disabled = disableSubmission || submissionInFlight;
 
   if (result.status === "ineligible" && dobValue !== "") {
-    logAnonymousEvent("blood_drive_ineligible_blocked");
+    logSafeEvent("blood_drive_ineligible_blocked");
   }
 
   return result;
@@ -254,7 +254,7 @@ function updateEligibilityUI() {
 
 /**
  * Independently determines eligibility from date of birth. This result is
- * authoritative over the checkboxes — a checked eligibility checkbox can
+ * authoritative over the checkboxes; a checked eligibility checkbox can
  * never override an under-16 date of birth.
  * @param {string} dobValue - "YYYY-MM-DD"
  * @returns {{status: "invalid"|"ineligible"|"consent-required"|"eligible", age: number|null}}
@@ -404,7 +404,7 @@ export function validateForm(formEl, currentSelectedSlotId) {
  * transaction is an MVP-appropriate mechanism, but the ultimate trust
  * boundary for production must be a Cloud Function that re-validates
  * eligibility, rate-limits requests, and performs duplicate detection that
- * an anonymous client is not permitted to do (it cannot read `registrations`
+ * the public client is not permitted to do (it cannot read `registrations`
  * at all).
  */
 async function reserveSlotAndCreateRegistration(payload) {
@@ -469,10 +469,11 @@ async function submitRegistration(event) {
   submitBtn.textContent = "Registering…";
 
   try {
-    await ensureAnonymousSession();
+    logRegistrationStep("Submitting registration transaction");
     const confirmationId = await reserveSlotAndCreateRegistration({ ...payload, eligibility });
+    logRegistrationStep("Registration transaction completed");
 
-    logAnonymousEvent("blood_drive_registration_success");
+    logSafeEvent("blood_drive_registration_success");
     showConfirmation({
       firstName: payload.firstName,
       lastName: payload.lastName,
@@ -482,7 +483,7 @@ async function submitRegistration(event) {
       confirmationId,
     });
   } catch (error) {
-    logAnonymousEvent("blood_drive_registration_error");
+    logSafeEvent("blood_drive_registration_error");
     handleSubmissionError(error);
   } finally {
     submissionInFlight = false;
@@ -493,7 +494,17 @@ async function submitRegistration(event) {
 
 function handleSubmissionError(error) {
   // Never surface raw Firebase error internals to the student.
-  const code = error && error.message;
+  const code = error && (error.code || error.message);
+  logRegistrationStep("Registration failed", { code: code || "unknown" });
+
+  if (code === "permission-denied") {
+    setError(
+      "submit",
+      "Registration could not be saved because Firebase permissions blocked the request. Please ask the organizers to deploy the latest Firestore rules and confirm the appointment slots are seeded."
+    );
+    announce("Registration could not be saved because Firebase permissions blocked the request.");
+    return;
+  }
 
   if (code === "SLOT_FULL" || code === "SLOT_UNAVAILABLE") {
     setError("slot", "That appointment just filled up. Please choose another time.");
@@ -507,6 +518,11 @@ function handleSubmissionError(error) {
     "We could not complete your registration. Please try again or contact the blood-drive organizers."
   );
   announce("We could not complete your registration. Please try again.");
+}
+
+function logRegistrationStep(message, details = {}) {
+  // Safe diagnostics only. Do not include names, emails, phone numbers, DOB, or student IDs.
+  console.info("[blood-drive-registration]", message, details);
 }
 
 function announce(message) {
@@ -543,7 +559,7 @@ function showConfirmation({ firstName, lastName, senatorIds, appointmentSlotId, 
 }
 
 function setText(id, value) {
-  document.getElementById(id).textContent = value; // textContent only — never innerHTML
+  document.getElementById(id).textContent = value; // textContent only; never innerHTML
 }
 
 function resetForm() {
@@ -575,16 +591,14 @@ function init() {
   document.getElementById("print-btn").addEventListener("click", () => window.print());
   document.getElementById("reset-btn").addEventListener("click", resetForm);
 
-  logAnonymousEvent("blood_drive_form_started");
+  logSafeEvent("blood_drive_form_started");
 
-  // Best-effort session + slot availability warm-up. Failures here must not
-  // block the student from filling out the form.
-  ensureAnonymousSession()
-    .then(() => loadSlotAvailability())
-    .catch(() => {
-      // If anonymous auth fails (e.g. offline), slots simply show their
-      // configured capacity until the student submits and we retry.
-    });
+  // Best-effort slot availability warm-up. Failures here must not block the
+  // student from filling out the form. The submit transaction repeats the
+  // capacity check before it writes anything.
+  loadSlotAvailability().catch((error) => {
+    logRegistrationStep("Slot availability warm-up failed", { code: error?.code || error?.message || "unknown" });
+  });
 }
 
 document.addEventListener("DOMContentLoaded", init);

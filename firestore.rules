@@ -1,19 +1,19 @@
 rules_version = '2';
 
 // ============================================================================
-// Firestore Security Rules — Carmel HS Blood Drive (MVP)
+// Firestore Security Rules: Carmel HS Blood Drive (MVP)
 //
 // THREAT MODEL / GOALS
-//   - No anonymous (or any) client may ever read a "registrations" document.
+//   - No public client may ever read a "registrations" document.
 //   - No client may ever update or delete a "registrations" document.
-//   - A client may create a "registrations" document ONLY if it exactly
+//   - A public client may create a "registrations" document ONLY if it exactly
 //     matches the expected, narrowly-validated schema for the current
 //     blood drive.
 //   - "slotCounts" documents contain no PII (just a capacity + a count) and
-//     may be read by an authenticated (anonymous is fine) client so the UI
+//     may be read by the public registration page so the UI
 //     can show live availability. They may only be UPDATED by incrementing
 //     `count` by exactly 1, and never past `capacity`. They can never be
-//     created or deleted by a client — they must be seeded ahead of time by
+//     created or deleted by a client; they must be seeded ahead of time by
 //     an administrator (see README.md).
 //   - Every other path is default-denied.
 //
@@ -36,22 +36,20 @@ service cloud.firestore {
       allow update: if false;
       allow delete: if false;
 
-      allow create: if request.auth != null
-        && isValidRegistration(request.resource.data);
+      allow create: if isValidRegistration(request.resource.data);
     }
 
     // ------------------------------------------------------------------
-    // slotCounts — non-PII capacity counters, one document per
+    // slotCounts: non-PII capacity counters, one document per
     // "{bloodDriveId}_{slotId}". Must be pre-seeded by an administrator
     // with { bloodDriveId, slotId, label, capacity, count: 0 }.
     // ------------------------------------------------------------------
     match /slotCounts/{slotDocId} {
-      allow read: if request.auth != null;
+      allow read: if true;
       allow create: if false;
       allow delete: if false;
 
-      allow update: if request.auth != null
-        && isValidSlotIncrement(resource.data, request.resource.data);
+      allow update: if isValidSlotIncrement(resource.data, request.resource.data);
     }
 
     // ------------------------------------------------------------------
@@ -101,7 +99,7 @@ function isValidRegistration(data) {
 
     && data.appointmentSlotId is string && data.appointmentSlotId.size() > 0 && data.appointmentSlotId.size() <= 10
 
-    // Basic sanity bounds only — NOT an authoritative recomputation of age.
+    // Basic sanity bounds only; NOT an authoritative recomputation of age.
     // A trusted backend must independently re-derive age from `dob` and
     // `bloodDriveDate` before this data is treated as production-ready.
     && data.ageOnDriveDate is int && data.ageOnDriveDate >= 16 && data.ageOnDriveDate <= 100
