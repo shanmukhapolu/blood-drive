@@ -14,7 +14,7 @@ export const CONFIG = {
   bloodDriveId: "chs-fall-2026",
   bloodDriveDate: "2026-09-04", // ISO date (local, no time component) — Friday, Sept 4, 2026
   eventName: "CHS Fall Blood Drive",
-  location: "Carmel High School Fieldhouse",
+  location: "Fieldhouse",
   slotsStart: "0800", // 8:00 AM
   slotsEnd: "1430", // 2:30 PM
   // Bump this whenever the registration document shape changes. Firestore
