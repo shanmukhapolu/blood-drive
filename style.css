@@ -120,11 +120,12 @@ body {
 
 .eyebrow {
   margin: 0;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.72);
+  font-size: clamp(15px, 2vw, 18px);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  color: rgba(255, 255, 255, 0.9);
+  line-height: 1.1;
 }
 
 .title {
@@ -183,8 +184,8 @@ body {
 }
 
 .fact-icon {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   flex-shrink: 0;
   color: #ffffff;
   opacity: 0.9;
@@ -479,8 +480,8 @@ input[aria-invalid="true"] {
 }
 
 .checkbox-row input[type="checkbox"] {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   margin: 1px 0 0;
   accent-color: var(--color-accent);
   flex-shrink: 0;
