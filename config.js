@@ -31,7 +31,7 @@ export const CONFIG = {
 // safeguard against a school-domain address reaching the database.
 export const SCHOOL_EMAIL_DOMAINS = ["carmelclayschools.org", "students.ccs.k12.in.us"];
 
-// Sample/fictional senator roster for the MVP. In a future version this
+// Sample/fictional signup-helper roster for the MVP. In a future version this
 // should be loaded from an approved, district-reviewed configuration source
 // (e.g. a read-only Firestore collection or remote config) instead of being
 // hard-coded here. Keep the shape the same ({ id, name }) so the rest of the

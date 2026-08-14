@@ -41,11 +41,10 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app-check.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
 
-// NOTE: apiKey is intentionally a placeholder. This project's owner must
-// replace it with the real Firebase Web API key for the "blood-drive-test"
-// project. Doing so does not weaken security — see the note above.
+// Firebase web configuration for the "blood-drive-test" project. The Web API
+// key is not a secret; see the security note above.
 const firebaseConfig = {
-  apiKey: "REPLACE_WITH_FIREBASE_WEB_API_KEY",
+  apiKey: "AIzaSyAXLRWEJGiVYZkIArLS4OG1jmUMj8sDWMg",
   authDomain: "blood-drive-test.firebaseapp.com",
   projectId: "blood-drive-test",
   storageBucket: "blood-drive-test.firebasestorage.app",
@@ -68,11 +67,12 @@ export const app = initializeApp(firebaseConfig);
 // district-approved) App Check site key created for the approved production
 // domain before this app collects any real student data. Do not invent or
 // guess a real site key.
+const appCheckSiteKey = "REPLACE_WITH_APP_CHECK_SITE_KEY";
 let appCheck = null;
 try {
-  if (firebaseConfig.apiKey !== "REPLACE_WITH_FIREBASE_WEB_API_KEY") {
+  if (appCheckSiteKey !== "REPLACE_WITH_APP_CHECK_SITE_KEY") {
     appCheck = initializeAppCheck(app, {
-      provider: new ReCaptchaEnterpriseProvider("REPLACE_WITH_APP_CHECK_SITE_KEY"),
+      provider: new ReCaptchaEnterpriseProvider(appCheckSiteKey),
       isTokenAutoRefreshEnabled: true,
     });
   }
