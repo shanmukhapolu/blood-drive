@@ -11,15 +11,18 @@
 // ============================================================================
 
 export const CONFIG = {
-  bloodDriveId: "fall-2026",
-  bloodDriveDate: "2026-10-01", // ISO date (local, no time component)
-  displayDate: "Fall 2026",
-  location: "Carmel High School",
+  bloodDriveId: "chs-fall-2026",
+  bloodDriveDate: "2026-09-04", // ISO date (local, no time component) — Friday, Sept 4, 2026
+  eventName: "CHS Fall Blood Drive",
+  location: "Carmel High School Fieldhouse",
+  slotsStart: "0800", // 8:00 AM
+  slotsEnd: "1430", // 2:30 PM
   // Bump this whenever the registration document shape changes. Firestore
   // rules and any future backend should reject documents with an unexpected
   // schemaVersion.
-  schemaVersion: 1,
+  schemaVersion: 2,
   minimumAge: 16,
+  studentIdLength: 9,
 };
 
 // Known school email domain(s). This is a CONVENIENCE check only — it warns
@@ -39,24 +42,33 @@ export const SENATORS = [
   { id: "maya-shah", name: "Maya Shah" },
   { id: "priya-desai", name: "Priya Desai" },
   { id: "sarah-chen", name: "Sarah Chen" },
-  { id: "self", name: "I registered myself" },
 ];
 
-// Sample appointment slots with a starting capacity. The `capacity` value is
-// a display default only — see app.js and firestore.rules for how real
+/**
+ * Builds the appointment-slot list from CONFIG.slotsStart to CONFIG.slotsEnd
+ * (inclusive) in 15-minute increments. Keeping this generated — rather than
+ * hand-typed — means the drive hours only ever need to change in one place.
+ */
+function buildTimeSlots() {
+  const toMinutes = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(2));
+  const startMinutes = toMinutes(CONFIG.slotsStart);
+  const endMinutes = toMinutes(CONFIG.slotsEnd);
+
+  const slots = [];
+  for (let m = startMinutes; m <= endMinutes; m += 15) {
+    const hour24 = Math.floor(m / 60);
+    const minute = m % 60;
+    const id = `${String(hour24).padStart(2, "0")}${String(minute).padStart(2, "0")}`;
+    const period = hour24 >= 12 ? "PM" : "AM";
+    const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
+    const label = `${hour12}:${String(minute).padStart(2, "0")} ${period}`;
+    slots.push({ id, label, capacity: 4 });
+  }
+  return slots;
+}
+
+// Generated appointment slots with a starting capacity. The `capacity` value
+// is a display default only — see app.js and firestore.rules for how real
 // capacity is meant to be tracked (a dedicated, non-PII slotCounts document
 // per slot, updated only via a validated, atomic transition).
-export const TIME_SLOTS = [
-  { id: "0900", label: "9:00 AM", capacity: 4 },
-  { id: "0915", label: "9:15 AM", capacity: 4 },
-  { id: "0930", label: "9:30 AM", capacity: 4 },
-  { id: "0945", label: "9:45 AM", capacity: 4 },
-  { id: "1000", label: "10:00 AM", capacity: 4 },
-  { id: "1015", label: "10:15 AM", capacity: 4 },
-  { id: "1030", label: "10:30 AM", capacity: 4 },
-  { id: "1045", label: "10:45 AM", capacity: 4 },
-  { id: "1100", label: "11:00 AM", capacity: 4 },
-  { id: "1115", label: "11:15 AM", capacity: 4 },
-  { id: "1130", label: "11:30 AM", capacity: 4 },
-  { id: "1145", label: "11:45 AM", capacity: 4 },
-];
+export const TIME_SLOTS = buildTimeSlots();

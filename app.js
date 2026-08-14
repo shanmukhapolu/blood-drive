@@ -84,11 +84,17 @@ function parseIsoDate(value) {
   return { year, month, day };
 }
 
-function formatDisplayDate(isoDate) {
+function formatDisplayDate(isoDate, { weekday = false } = {}) {
   const parts = parseIsoDate(isoDate);
   if (!parts) return isoDate;
   const d = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
-  return d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" });
+  return d.toLocaleDateString("en-US", {
+    ...(weekday ? { weekday: "long" } : {}),
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    timeZone: "UTC",
+  });
 }
 
 function isLikelyValidEmail(value) {
@@ -112,9 +118,14 @@ function isSchoolDomainEmail(value) {
 // ============================================================================
 
 function renderHeader() {
-  document.getElementById("event-line").textContent = CONFIG.displayDate;
-  document.getElementById("event-meta").textContent =
-    `${formatDisplayDate(CONFIG.bloodDriveDate)} · ${CONFIG.location}`;
+  document.getElementById("fact-date").textContent = formatDisplayDate(CONFIG.bloodDriveDate, { weekday: true });
+
+  const firstSlot = TIME_SLOTS[0];
+  const lastSlot = TIME_SLOTS[TIME_SLOTS.length - 1];
+  document.getElementById("fact-time").textContent =
+    firstSlot && lastSlot ? `${firstSlot.label} – ${lastSlot.label}` : "";
+
+  document.getElementById("fact-location").textContent = CONFIG.location;
 }
 
 function renderSenatorOptions() {
@@ -283,12 +294,14 @@ function clearAllErrors() {
  * a normalized payload safe to submit. Never throws.
  */
 export function validateForm(formEl, currentSelectedSlotId) {
-  const legalName = formEl.legalName.value.trim();
+  const firstName = formEl.firstName.value.trim();
+  const lastName = formEl.lastName.value.trim();
   const studentEmail = formEl.studentEmail.value.trim();
   const parentEmail = formEl.parentEmail.value.trim();
   const phone = formEl.phone.value.trim();
   const dob = formEl.dob.value;
   const studentId = formEl.studentId.value.trim();
+  const nhsSenior = formEl.nhsSenior.checked;
   const eligAge = formEl.eligAge.checked;
   const eligNoSport = formEl.eligNoSport.checked;
   const selectedSenators = Array.from(formEl.querySelectorAll('input[name="senators"]:checked')).map(
@@ -297,8 +310,13 @@ export function validateForm(formEl, currentSelectedSlotId) {
 
   let valid = true;
 
-  if (!legalName || legalName.length < 2) {
-    setError("legalName", "Enter the student's full legal name.");
+  if (!firstName || firstName.length < 2) {
+    setError("firstName", "Enter the student's first name.");
+    valid = false;
+  }
+
+  if (!lastName || lastName.length < 2) {
+    setError("lastName", "Enter the student's last name.");
     valid = false;
   }
 
@@ -329,8 +347,8 @@ export function validateForm(formEl, currentSelectedSlotId) {
     valid = false;
   }
 
-  if (!studentId || studentId.length < 3) {
-    setError("studentId", "Enter a valid student ID number.");
+  if (!/^\d{9}$/.test(studentId)) {
+    setError("studentId", "Enter your 9-digit student ID number.");
     valid = false;
   }
 
@@ -344,7 +362,7 @@ export function validateForm(formEl, currentSelectedSlotId) {
   }
 
   if (selectedSenators.length === 0) {
-    setError("senators", "Select at least one senator (or \u201cI registered myself\u201d).");
+    setError("senators", "Select at least one senator who helped you sign up.");
     valid = false;
   }
 
@@ -357,7 +375,8 @@ export function validateForm(formEl, currentSelectedSlotId) {
     valid,
     eligibility,
     payload: {
-      legalName,
+      firstName,
+      lastName,
       studentEmail,
       parentEmail,
       phone,
@@ -367,6 +386,7 @@ export function validateForm(formEl, currentSelectedSlotId) {
       appointmentSlotId: currentSelectedSlotId,
       eligibilityAgeConfirmed: eligAge,
       eligibilityNoFallSportConfirmed: eligNoSport,
+      nhsSeniorMember: nhsSenior,
     },
   };
 }
@@ -410,7 +430,8 @@ async function reserveSlotAndCreateRegistration(payload) {
       bloodDriveId: CONFIG.bloodDriveId,
       bloodDriveDate: CONFIG.bloodDriveDate,
       location: CONFIG.location,
-      legalName: payload.legalName,
+      firstName: payload.firstName,
+      lastName: payload.lastName,
       studentEmail: payload.studentEmail,
       parentEmail: payload.parentEmail,
       phone: payload.phone,
@@ -422,6 +443,7 @@ async function reserveSlotAndCreateRegistration(payload) {
       parentConsentStatus: payload.eligibility.status === "consent-required" ? "required" : "not_required",
       eligibilityAgeConfirmed: payload.eligibilityAgeConfirmed,
       eligibilityNoFallSportConfirmed: payload.eligibilityNoFallSportConfirmed,
+      nhsSeniorMember: payload.nhsSeniorMember,
       createdAt: serverTimestamp(),
     });
   });
@@ -452,7 +474,8 @@ async function submitRegistration(event) {
 
     logAnonymousEvent("blood_drive_registration_success");
     showConfirmation({
-      legalName: payload.legalName,
+      firstName: payload.firstName,
+      lastName: payload.lastName,
       senatorIds: payload.senatorIds,
       appointmentSlotId: payload.appointmentSlotId,
       parentConsentRequired: eligibility.status === "consent-required",
@@ -495,7 +518,7 @@ function announce(message) {
 // Confirmation view
 // ============================================================================
 
-function showConfirmation({ legalName, senatorIds, appointmentSlotId, parentConsentRequired, confirmationId }) {
+function showConfirmation({ firstName, lastName, senatorIds, appointmentSlotId, parentConsentRequired, confirmationId }) {
   form.classList.add("hidden");
   confirmationView.classList.remove("hidden");
 
@@ -505,9 +528,9 @@ function showConfirmation({ legalName, senatorIds, appointmentSlotId, parentCons
     .filter(Boolean)
     .join(", ");
 
-  setText("sum-student", legalName);
-  setText("sum-drive", CONFIG.displayDate);
-  setText("sum-date", formatDisplayDate(CONFIG.bloodDriveDate));
+  setText("sum-student", `${firstName} ${lastName}`);
+  setText("sum-drive", CONFIG.eventName);
+  setText("sum-date", formatDisplayDate(CONFIG.bloodDriveDate, { weekday: true }));
   setText("sum-location", CONFIG.location);
   setText("sum-slot", slot ? slot.label : "");
   setText("sum-senators", senatorNames);

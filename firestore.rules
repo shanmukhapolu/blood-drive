@@ -70,31 +70,32 @@ service cloud.firestore {
 function isValidRegistration(data) {
   return data.keys().hasOnly([
       'schemaVersion', 'bloodDriveId', 'bloodDriveDate', 'location',
-      'legalName', 'studentEmail', 'parentEmail', 'phone', 'dob',
+      'firstName', 'lastName', 'studentEmail', 'parentEmail', 'phone', 'dob',
       'studentId', 'senatorIds', 'appointmentSlotId', 'ageOnDriveDate',
       'parentConsentStatus', 'eligibilityAgeConfirmed',
-      'eligibilityNoFallSportConfirmed', 'createdAt'
+      'eligibilityNoFallSportConfirmed', 'nhsSeniorMember', 'createdAt'
     ])
     && data.keys().hasAll([
       'schemaVersion', 'bloodDriveId', 'bloodDriveDate', 'location',
-      'legalName', 'studentEmail', 'parentEmail', 'phone', 'dob',
+      'firstName', 'lastName', 'studentEmail', 'parentEmail', 'phone', 'dob',
       'studentId', 'senatorIds', 'appointmentSlotId', 'ageOnDriveDate',
       'parentConsentStatus', 'eligibilityAgeConfirmed',
-      'eligibilityNoFallSportConfirmed', 'createdAt'
+      'eligibilityNoFallSportConfirmed', 'nhsSeniorMember', 'createdAt'
     ])
 
-    && data.schemaVersion == 1
+    && data.schemaVersion == 2
 
     && data.bloodDriveId is string && data.bloodDriveId.size() > 0 && data.bloodDriveId.size() <= 60
     && data.bloodDriveDate is string && data.bloodDriveDate.size() == 10
     && data.location is string && data.location.size() > 0 && data.location.size() <= 120
 
-    && data.legalName is string && data.legalName.size() >= 2 && data.legalName.size() <= 80
+    && data.firstName is string && data.firstName.size() >= 2 && data.firstName.size() <= 40
+    && data.lastName is string && data.lastName.size() >= 2 && data.lastName.size() <= 40
     && data.studentEmail is string && data.studentEmail.size() >= 5 && data.studentEmail.size() <= 120
     && data.parentEmail is string && data.parentEmail.size() >= 5 && data.parentEmail.size() <= 120
     && data.phone is string && data.phone.size() >= 7 && data.phone.size() <= 20
     && data.dob is string && data.dob.size() == 10
-    && data.studentId is string && data.studentId.size() >= 3 && data.studentId.size() <= 15
+    && data.studentId is string && data.studentId.size() == 9
 
     && data.senatorIds is list && data.senatorIds.size() >= 1 && data.senatorIds.size() <= 6
 
@@ -110,6 +111,7 @@ function isValidRegistration(data) {
 
     && data.eligibilityAgeConfirmed == true
     && data.eligibilityNoFallSportConfirmed == true
+    && data.nhsSeniorMember is bool
 
     && data.createdAt == request.time;
 }
