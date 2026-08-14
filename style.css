@@ -214,6 +214,93 @@ body {
   text-overflow: ellipsis;
 }
 
+/* ==========================================================================
+   About / incentives
+   ========================================================================== */
+.about {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 28px 30px;
+  margin-bottom: 20px;
+}
+
+.about-title {
+  margin: 0 0 10px;
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.about-text {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 15px;
+}
+
+.perks-title {
+  margin: 24px 0 12px;
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.perks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.perk {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #d4e4f3;
+  border-radius: var(--radius-md);
+  background: #f7fbff;
+}
+
+.perk-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  border-radius: 999px;
+  color: var(--color-accent);
+  background: var(--color-accent-tint);
+}
+
+.perk-icon svg {
+  width: 17px;
+  height: 17px;
+  display: block;
+}
+
+.perk-text {
+  min-width: 0;
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
+@media (max-width: 640px) {
+  .about {
+    padding: 22px;
+  }
+
+  .perks {
+    grid-template-columns: 1fr;
+  }
+}
+
 .notice {
   background: var(--color-accent-tint);
   border: 1px solid #bfd7ee;
