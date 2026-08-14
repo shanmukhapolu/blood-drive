@@ -362,7 +362,7 @@ export function validateForm(formEl, currentSelectedSlotId) {
   }
 
   if (selectedSenators.length === 0) {
-    setError("senators", "Select at least one senator who helped you sign up.");
+    setError("senators", "Select at least one signup helper.");
     valid = false;
   }
 
