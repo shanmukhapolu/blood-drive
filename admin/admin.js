@@ -1,7 +1,6 @@
 import { CONFIG, TIME_SLOTS } from "../config.js";
-import { db } from "../firebase-init.js";
 import { requireAdmin, logout } from "./auth.js";
-import { collection, onSnapshot, orderBy, query } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
+import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-functions.js";
 
 const PAGE_SIZE = 25;
 const DEFAULT_SORT_KEY = "createdAt";
@@ -14,7 +13,9 @@ let filteredRegistrations = [];
 let page = 1;
 let sortKey = DEFAULT_SORT_KEY;
 let sortDir = "desc";
-let unsubscribeRegistrations = null;
+const functions = getFunctions();
+const listAdminRegistrations = httpsCallable(functions, "listAdminRegistrations");
+let loadingRegistrations = false;
 
 const columns = [
   ["id", "Confirmation ID"],
@@ -93,34 +94,32 @@ function initStatisticsPage() {
   });
 }
 
-function watchRegistrations(onRecords) {
-  if (unsubscribeRegistrations) unsubscribeRegistrations();
+async function watchRegistrations(onRecords) {
+  if (loadingRegistrations) return;
+  loadingRegistrations = true;
 
-  const registrationsQuery = query(collection(db, REGISTRATIONS_COLLECTION), orderBy(DEFAULT_SORT_KEY, "desc"));
-  debugAdminCheckpoint("registrations-listener-start", {
+  debugAdminCheckpoint("registrations-fetch-start", {
     collection: REGISTRATIONS_COLLECTION,
-    orderBy: `${DEFAULT_SORT_KEY} desc`,
+    source: "listAdminRegistrations callable",
   });
 
-  unsubscribeRegistrations = onSnapshot(
-    registrationsQuery,
-    (snapshot) => {
-      const records = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
-      debugAdminCheckpoint("registrations-snapshot", {
-        count: records.length,
-        fromCache: snapshot.metadata.fromCache,
-        pendingWrites: snapshot.metadata.hasPendingWrites,
-      });
-      onRecords(records);
-    },
-    (error) => {
-      debugAdminCheckpoint("registrations-listener-error", {
-        code: error?.code || "unknown",
-        message: error?.message || String(error),
-      });
-      showLoadError(error);
-    }
-  );
+  try {
+    const result = await listAdminRegistrations();
+    const records = Array.isArray(result.data?.registrations) ? result.data.registrations : [];
+    debugAdminCheckpoint("registrations-fetch-success", {
+      count: records.length,
+      adminDocumentId: redactId(result.data?.adminDocumentId),
+    });
+    onRecords(records);
+  } catch (error) {
+    debugAdminCheckpoint("registrations-fetch-error", {
+      code: error?.code || "unknown",
+      message: error?.message || String(error),
+    });
+    showLoadError(error);
+  } finally {
+    loadingRegistrations = false;
+  }
 }
 
 function showLoadError(error) {
@@ -128,8 +127,8 @@ function showLoadError(error) {
   const rawMessage = error?.message || String(error || "No error details returned.");
   const message =
     code === "permission-denied"
-      ? "Firestore denied access. Make sure your Firebase Auth user has an admins record whose document ID is your Firebase Auth UID or exact email, with role admin and status enabled, then deploy the latest rules."
-      : "Unable to load registration data directly from Firestore. Please refresh or check Firebase configuration.";
+      ? "The admin data endpoint denied access. Make sure your Firebase Auth user has an admins record whose document ID is your Firebase Auth UID or exact email, with role admin and status enabled, then deploy the latest functions."
+      : "Unable to load registration data from the secure admin endpoint. Please refresh or check Firebase configuration.";
 
   if ($("counts")) $("counts").textContent = "Unable to load registrations";
   if ($("rows")) {
