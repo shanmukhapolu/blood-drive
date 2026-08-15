@@ -61,14 +61,14 @@ async function loadRegistrations() {
     );
     const snapshot = await getDocs(registrationsQuery);
 
-    console.info("[Admin Dashboard] registrations read:", snapshot.size);
+    console.info("[Admin Dashboard] all registrations read:", snapshot.size);
 
     return snapshot.docs.map((registration) => serialize({
       id: registration.id,
       ...registration.data(),
     }));
   } catch (error) {
-    console.error("[Admin Dashboard] registrations read failed:", error);
+    console.error("[Admin Dashboard] all registrations read failed:", error);
     showError("Could not load registrations.");
     return [];
   }
@@ -132,18 +132,22 @@ function renderTable(records) {
 
   records.forEach((record) => {
     const row = document.createElement("tr");
-    row.innerHTML = `
-      <td>${escapeHtml(record.id)}</td>
-      <td>${escapeHtml(formatTimestamp(record.createdAt))}</td>
-      <td>${escapeHtml(record.firstName || "")}</td>
-      <td>${escapeHtml(record.lastName || "")}</td>
-      <td>${escapeHtml(record.studentEmail || "")}</td>
-      <td>${escapeHtml(record.parentEmail || "")}</td>
-      <td>${escapeHtml(record.phone || "")}</td>
-      <td>${escapeHtml(slotLabel(record.appointmentSlotId))}</td>
-      <td>${escapeHtml((record.senatorIds || []).map(senatorName).join(", "))}</td>
-      <td>${escapeHtml(record.parentConsentStatus || "")}</td>
-    `;
+    [
+      record.id,
+      formatTimestamp(record.createdAt),
+      record.firstName || "",
+      record.lastName || "",
+      record.studentEmail || "",
+      record.parentEmail || "",
+      record.phone || "",
+      slotLabel(record.appointmentSlotId),
+      (record.senatorIds || []).map(senatorName).join(", "),
+      record.parentConsentStatus || "",
+    ].forEach((value) => {
+      const cell = document.createElement("td");
+      cell.textContent = value;
+      row.appendChild(cell);
+    });
     row.addEventListener("click", () => showDetail(record));
     rows.appendChild(row);
   });
@@ -156,17 +160,31 @@ function showDetail(record) {
   root.textContent = "";
   const modal = document.createElement("div");
   modal.className = "modal";
-  modal.innerHTML = `
-    <div class="modal-card">
-      <div class="summary-line">
-        <h2>Registration detail</h2>
-        <button id="close-modal" class="secondary" type="button">Close</button>
-      </div>
-      <pre class="detail-json">${escapeHtml(JSON.stringify(record, null, 2))}</pre>
-    </div>
-  `;
+
+  const card = document.createElement("div");
+  card.className = "modal-card";
+
+  const header = document.createElement("div");
+  header.className = "summary-line";
+
+  const title = document.createElement("h2");
+  title.textContent = "Registration detail";
+
+  const close = document.createElement("button");
+  close.id = "close-modal";
+  close.className = "secondary";
+  close.type = "button";
+  close.textContent = "Close";
+
+  const detail = document.createElement("pre");
+  detail.className = "detail-json";
+  detail.textContent = JSON.stringify(record, null, 2);
+
+  header.append(title, close);
+  card.append(header, detail);
+  modal.appendChild(card);
   root.appendChild(modal);
-  $("close-modal")?.addEventListener("click", () => {
+  close.addEventListener("click", () => {
     root.textContent = "";
   });
 }
@@ -208,7 +226,15 @@ function statGrid(items) {
   items.forEach(([label, value]) => {
     const card = document.createElement("div");
     card.className = "stat-card";
-    card.innerHTML = `<div class="muted">${escapeHtml(label)}</div><div class="stat-value">${escapeHtml(String(value))}</div>`;
+    const labelElement = document.createElement("div");
+    labelElement.className = "muted";
+    labelElement.textContent = label;
+
+    const valueElement = document.createElement("div");
+    valueElement.className = "stat-value";
+    valueElement.textContent = String(value);
+
+    card.append(labelElement, valueElement);
     grid.appendChild(card);
   });
   return grid;
@@ -217,7 +243,10 @@ function statGrid(items) {
 function listPanel(title, rows) {
   const panel = document.createElement("section");
   panel.className = "panel";
-  panel.innerHTML = `<h2>${escapeHtml(title)}</h2>`;
+  const heading = document.createElement("h2");
+  heading.textContent = title;
+  panel.appendChild(heading);
+
   const list = document.createElement("div");
   list.className = "list";
   rows.forEach((text) => {
@@ -261,8 +290,4 @@ function formatTimestamp(value) {
 
 function formatDriveDate(value) {
   return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", { dateStyle: "long" });
-}
-
-function escapeHtml(value) {
-  return String(value ?? "").replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char]));
 }

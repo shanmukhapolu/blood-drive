@@ -1,27 +1,202 @@
 rules_version = '2';
 
-// Simple test rules for the CHS Blood Drive prototype.
-// These rules intentionally keep the client code unblocked while the app is
-// being tested. Tighten these before collecting real student information.
+// ============================================================================
+// Firestore Security Rules: Carmel HS Blood Drive (MVP)
+//
+// THREAT MODEL / GOALS
+//   - No public client may ever read a "registrations" document; only authenticated
+//     enabled admins may read registrations directly through Firestore rules.
+//   - No client may ever update or delete a "registrations" document.
+//   - A public client may create a "registrations" document ONLY if it exactly
+//     matches the expected, narrowly-validated schema for the current
+//     blood drive.
+//   - "slotCounts" documents contain no PII (just a capacity + a count) and
+//     may be read by the public registration page so the UI
+//     can show live availability. They may only be UPDATED by incrementing
+//     `count` by exactly 1, and never past `capacity`. A client may only
+//     create a missing counter as the first reservation for a known slot.
+//   - Every other path is default-denied.
+//
+// This ruleset is the authoritative enforcement point for the MVP. It is
+// intentionally strict. See README.md "Production Requirements" for why a
+// trusted backend (Cloud Function) is still required before this collects
+// real student data: these rules cannot rate-limit, cannot detect duplicate
+// registrations (they have no read access to compare against), and cannot
+// independently re-verify eligibility beyond basic type/range checks.
+// ============================================================================
+
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // ------------------------------------------------------------------
+    // registrations
+    // ------------------------------------------------------------------
     match /registrations/{registrationId} {
-      allow read, create: if true;
-      allow update, delete: if request.auth != null;
+      allow read: if isAdmin();
+      allow update: if false;
+      allow delete: if false;
+
+      allow create: if isValidRegistration(request.resource.data);
     }
 
+    // ------------------------------------------------------------------
+    // slotCounts: non-PII capacity counters, one document per
+    // "{bloodDriveId}_{slotId}". A client may create one only as part of
+    // the first valid reservation for a known slot, with count starting at 1.
+    // ------------------------------------------------------------------
     match /slotCounts/{slotDocId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create: if isValidInitialSlotCount(slotDocId, request.resource.data);
+      allow delete: if false;
+
+      allow update: if isValidSlotIncrement(resource.data, request.resource.data);
     }
 
+
+    // ------------------------------------------------------------------
+    // admins: self-service signup may create only the signed-in user's own
+    // admin profile, and it must start with status 'disabled'. An organizer
+    // must manually change status to 'enabled' in Firebase before the account
+    // can read registration data.
+    // ------------------------------------------------------------------
     match /admins/{adminId} {
+      // Simple admin model: signed-in users may read admin profile records so
+      // the dashboard can find a matching enabled admin by UID or email.
       allow read: if request.auth != null;
-      allow create: if request.auth != null && adminId == request.auth.uid;
-      allow update, delete: if request.auth != null;
+      allow create: if request.auth != null
+        && adminId == request.auth.uid
+        && request.resource.data.keys().hasOnly(['email', 'role', 'status', 'createdAt'])
+        && request.resource.data.email is string
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.role == 'admin'
+        && request.resource.data.status == 'disabled'
+        && request.resource.data.createdAt == request.time;
+      allow update, delete: if false;
     }
 
+    // ------------------------------------------------------------------
+    // Default deny for every other path in the database.
+    // ------------------------------------------------------------------
     match /{document=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if false;
     }
   }
+}
+
+// ==========================================================================
+// Validation helpers
+// ==========================================================================
+
+function isValidRegistration(data) {
+  return data.keys().hasOnly([
+      'schemaVersion', 'bloodDriveId', 'bloodDriveDate', 'location',
+      'firstName', 'lastName', 'studentEmail', 'parentEmail', 'phone', 'dob',
+      'studentId', 'senatorIds', 'appointmentSlotId', 'ageOnDriveDate',
+      'parentConsentStatus', 'eligibilityAgeConfirmed',
+      'eligibilityNoFallSportConfirmed', 'nhsSeniorMember', 'createdAt'
+    ])
+    && data.keys().hasAll([
+      'schemaVersion', 'bloodDriveId', 'bloodDriveDate', 'location',
+      'firstName', 'lastName', 'studentEmail', 'parentEmail', 'phone', 'dob',
+      'studentId', 'senatorIds', 'appointmentSlotId', 'ageOnDriveDate',
+      'parentConsentStatus', 'eligibilityAgeConfirmed',
+      'eligibilityNoFallSportConfirmed', 'nhsSeniorMember', 'createdAt'
+    ])
+
+    && data.schemaVersion == 2
+
+    && data.bloodDriveId == 'chs-fall-2026'
+    && data.bloodDriveDate == '2026-09-04'
+    && data.location == 'Fieldhouse'
+
+    && data.firstName is string && data.firstName.size() >= 2 && data.firstName.size() <= 40
+    && data.lastName is string && data.lastName.size() >= 2 && data.lastName.size() <= 40
+    && isValidEmail(data.studentEmail)
+    && isValidEmail(data.parentEmail)
+    && data.phone is string && data.phone.matches('^[0-9()+ .-]{7,20}$')
+    && data.dob is string && data.dob.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+    && data.studentId is string && data.studentId.matches('^[0-9]{9}$')
+
+    && isValidSenatorList(data.senatorIds)
+
+    && isValidAppointmentSlotId(data.appointmentSlotId)
+
+    // Basic sanity bounds only; NOT an authoritative recomputation of age.
+    // A trusted backend must independently re-derive age from `dob` and
+    // `bloodDriveDate` before this data is treated as production-ready.
+    && data.ageOnDriveDate is int && data.ageOnDriveDate >= 16 && data.ageOnDriveDate <= 100
+
+    && data.parentConsentStatus is string
+    && (data.parentConsentStatus == 'required' || data.parentConsentStatus == 'not_required')
+
+    && data.eligibilityAgeConfirmed == true
+    && data.eligibilityNoFallSportConfirmed == true
+    && data.nhsSeniorMember is bool
+
+    && data.createdAt == request.time;
+}
+
+function isValidEmail(email) {
+  return email is string
+    && email.size() >= 5
+    && email.size() <= 120
+    && email.matches('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$');
+}
+
+function isValidSenatorList(senatorIds) {
+  return senatorIds is list
+    && senatorIds.size() >= 1
+    && senatorIds.size() <= 6
+    && senatorIds.hasOnly([
+      'alex-patel', 'daniel-kim', 'maya-shah', 'priya-desai', 'sarah-chen'
+    ]);
+}
+
+function isValidAppointmentSlotId(slotId) {
+  return slotId in [
+    '0800', '0815', '0830', '0845', '0900', '0915', '0930', '0945',
+    '1000', '1015', '1030', '1045', '1100', '1115', '1130', '1145',
+    '1200', '1215', '1230', '1245', '1300', '1315', '1330', '1345',
+    '1400', '1415', '1430'
+  ];
+}
+
+function isValidInitialSlotCount(slotDocId, data) {
+  return data.keys().hasOnly(['bloodDriveId', 'slotId', 'label', 'capacity', 'count'])
+    && data.keys().hasAll(['bloodDriveId', 'slotId', 'label', 'capacity', 'count'])
+    && data.bloodDriveId == 'chs-fall-2026'
+    && isValidAppointmentSlotId(data.slotId)
+    && slotDocId == data.bloodDriveId + '_' + data.slotId
+    && data.label is string && data.label.size() > 0 && data.label.size() <= 20
+    && data.capacity is int && data.capacity == 10
+    && data.count is int && data.count == 1;
+}
+
+function isValidSlotIncrement(before, after) {
+  return before.keys().hasAll(['capacity', 'count'])
+    && after.keys().hasAll(['capacity', 'count'])
+    && before.capacity is int
+    && after.capacity == before.capacity
+    && after.count is int
+    && after.count == before.count + 1
+    && after.count <= after.capacity
+    // Every other field on the document (bloodDriveId, slotId, label, ...)
+    // must remain unchanged by a client update.
+    && after.diff(before).affectedKeys().hasOnly(['count']);
+}
+
+function isAdmin() {
+  return request.auth != null
+    && (
+      (exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        && isEnabledAdmin(get(/databases/$(database)/documents/admins/$(request.auth.uid)).data))
+      ||
+      (request.auth.token.email is string
+        && exists(/databases/$(database)/documents/admins/$(request.auth.token.email))
+        && isEnabledAdmin(get(/databases/$(database)/documents/admins/$(request.auth.token.email)).data))
+    );
+}
+
+function isEnabledAdmin(data) {
+  return data.role == 'admin' && data.status == 'enabled';
 }
