@@ -33,22 +33,45 @@
         <div>
           <p class="eyebrow">Firebase registrations</p>
           <h1>Registrations</h1>
-          <p class="muted">Simple read-only view of the registration documents in Firestore. Click a row for the raw document.</p>
+          <p class="muted">Full-width searchable, filterable registration view. Click a row for a readable detail panel.</p>
         </div>
         <button id="refresh" class="primary" type="button">Refresh</button>
       </div>
-      <div class="toolbar simple-toolbar">
-        <div>
+      <div class="toolbar registrations-toolbar">
+        <div class="wide-field">
           <label for="search">Search</label>
-          <input id="search" placeholder="Name, email, student ID, confirmation ID">
+          <input id="search" placeholder="Student ID, first/last name, student/parent email, confirmation ID">
         </div>
         <div>
-          <label for="filter-slot">Appointment</label>
+          <label for="filter-slot">Appointment time</label>
           <select id="filter-slot"><option value="">All appointments</option></select>
+        </div>
+        <div>
+          <label for="filter-age">Age</label>
+          <select id="filter-age"><option value="">All ages</option></select>
+        </div>
+        <div>
+          <label for="filter-nhs">NHS status</label>
+          <select id="filter-nhs"><option value="">All NHS statuses</option></select>
         </div>
         <div>
           <label for="filter-senator">Senator</label>
           <select id="filter-senator"><option value="">All senators</option></select>
+        </div>
+        <div>
+          <label for="filter-confirmation-email">Confirmation email</label>
+          <select id="filter-confirmation-email"><option value="">All statuses</option></select>
+        </div>
+        <div>
+          <label for="filter-consent-email">Consent email</label>
+          <select id="filter-consent-email"><option value="">All statuses</option></select>
+        </div>
+        <div>
+          <label for="page-size">Pagination</label>
+          <select id="page-size"></select>
+        </div>
+        <div class="filter-actions inline-action">
+          <button id="clear-filters" class="secondary" type="button">Clear filters</button>
         </div>
       </div>
     </section>
@@ -62,19 +85,28 @@
           <thead>
             <tr>
               <th>Confirmation ID</th>
-              <th>Submitted</th>
-              <th>First</th>
-              <th>Last</th>
-              <th>Student Email</th>
+              <th data-sort="createdAt" data-label="Date Submitted">Date Submitted</th>
+              <th data-sort="firstName" data-label="First Name">First Name</th>
+              <th data-sort="lastName" data-label="Last Name">Last Name</th>
               <th>Parent Email</th>
+              <th>Student Email</th>
               <th>Phone</th>
-              <th>Appointment</th>
-              <th>Senators</th>
-              <th>Consent</th>
+              <th>Birthdate</th>
+              <th>Student ID</th>
+              <th>In NHS?</th>
+              <th>Senator(s) Assisted</th>
+              <th data-sort="appointmentSlotId" data-label="Time Slot">Time Slot</th>
+              <th data-sort="ageOnDriveDate" data-label="Age on Drive Date">Age on Drive Date</th>
+              <th>Email Statuses</th>
             </tr>
           </thead>
           <tbody id="rows"></tbody>
         </table>
+      </div>
+      <div class="pager">
+        <button id="prev-page" class="secondary" type="button">Previous</button>
+        <strong id="page-info">Page 1 of 1</strong>
+        <button id="next-page" class="secondary" type="button">Next</button>
       </div>
       <p id="error" class="error"></p>
     </section>
