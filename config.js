@@ -6,7 +6,7 @@
 // values throughout the codebase.
 //
 // NOTE: None of the values in this file are secret. Security comes from
-// Firestore Security Rules and (in production) a trusted backend, not from
+// Firestore Security Rules and a trusted backend, not from
 // hiding configuration values in the client.
 // ============================================================================
 
@@ -30,19 +30,37 @@ export const CONFIG = {
 // students who accidentally enter their school email instead of a personal
 // one. It is NOT a security control and must never be relied on as the sole
 // safeguard against a school-domain address reaching the database.
-export const SCHOOL_EMAIL_DOMAINS = ["carmelclayschools.org", "students.ccs.k12.in.us"];
+export const SCHOOL_EMAIL_DOMAINS = ["ccs.k12.in.us"];
 
-// Sample/fictional senator roster for the MVP. In a future version this
-// should be loaded from an approved, district-reviewed configuration source
-// (e.g. a read-only Firestore collection or remote config) instead of being
-// hard-coded here. Keep the shape the same ({ id, name }) so the rest of the
+// This is the senate roster shown when signing up for the blood drive. Keep the shape the same ({ id, name }) so the rest of the
 // app does not need to change when that happens.
 export const SENATORS = [
-  { id: "alex-patel", name: "Alex Patel" },
-  { id: "daniel-kim", name: "Daniel Kim" },
-  { id: "maya-shah", name: "Maya Shah" },
-  { id: "priya-desai", name: "Priya Desai" },
-  { id: "sarah-chen", name: "Sarah Chen" },
+  { id: "ms-foutz", name: "Ms. Foutz" },
+  { id: "kayla-aba", name: "Kayla Aba" },
+  { id: "advik-chaudhary", name: "Advik Chaudhary" },
+  { id: "shawn-feng", name: "Shawn Feng" },
+  { id: "divreet-padda", name: "Divreet Padda" },
+  { id: "shanmukha-polu", name: "Shanmukha Polu" },
+  { id: "sheldon-spence", name: "Sheldon Spence" },
+  { id: "themba-tshililiwa", name: "Themba Tshililiwa" },
+  { id: "karis-ho", name: "Karis Ho" },
+  { id: "ananya-jain", name: "Ananya Jain" },
+  { id: "anna-kirsh", name: "Anna Kirsh" },
+  { id: "colin-phifer", name: "Colin Phifer" },
+  { id: "pranad-sowale", name: "Pranad Sowale" },
+  { id: "rodion-zuban", name: "Rodion Zuban" },
+  { id: "victor-allen", name: "Victor Allen" },
+  { id: "erin-an", name: "Erin An" },
+  { id: "kate-hillabrandt", name: "Kate Hillabrandt" },
+  { id: "elise-kim", name: "Elise Kim" },
+  { id: "samir-myers", name: "Samir Myers" },
+  { id: "rishi-polu", name: "Rishi Polu" },
+  { id: "charlie-moon", name: "Charlie Moon" },
+  { id: "wyatt-dillingham", name: "Wyatt Dillingham" },
+  { id: "vega-dange", name: "Vega Dange" },
+  { id: "jiju-sivakumar", name: "Jiju Sivakumar" },
+  { id: "sophia-philips", name: "Sophia Philips" },
+  { id: "catherine-gilhooly", name: "Catherine Gilhooly" },
 ];
 
 /**
