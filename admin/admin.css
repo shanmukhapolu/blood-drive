@@ -325,7 +325,7 @@ body.admin-auth-checking .shell {
 
 table {
   width: 100%;
-  min-width: 1450px;
+  min-width: 1320px;
   border-collapse: separate;
   border-spacing: 0;
 }
@@ -672,5 +672,63 @@ th[data-sort] {
 
   .registrations-toolbar .wide-field {
     grid-column: auto;
+  }
+}
+
+.appointment-list {
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
+}
+
+.appointment-list .featured-row {
+  border-color: rgba(14, 96, 171, 0.28);
+  background: linear-gradient(135deg, #ffffff, var(--admin-blue-soft));
+  color: var(--admin-blue-deep);
+  font-family: var(--admin-display);
+  font-size: 1.05rem;
+  font-weight: 780;
+  box-shadow: 0 12px 24px -22px rgba(14, 96, 171, 0.7);
+}
+
+.appointment-list .subtle-row {
+  padding: 9px 11px;
+  color: var(--admin-muted);
+  font-size: 0.88rem;
+}
+
+.senator-panel .chart {
+  gap: 18px;
+  min-height: 310px;
+  padding-bottom: 86px;
+}
+
+.diagonal-labels .bar {
+  min-width: 58px;
+}
+
+.diagonal-labels .bar span {
+  right: auto;
+  bottom: -64px;
+  left: 50%;
+  width: 96px;
+  text-align: left;
+  transform: translateX(-12px) rotate(-38deg);
+  transform-origin: top left;
+  white-space: nowrap;
+}
+
+.leaderboard-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.leaderboard-list .leaderboard-row {
+  border-left: 5px solid var(--admin-blue);
+  color: var(--admin-blue-deep);
+  font-weight: 720;
+}
+
+@media (max-width: 900px) {
+  .appointment-list {
+    grid-template-columns: 1fr;
   }
 }

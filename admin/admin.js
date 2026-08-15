@@ -34,7 +34,7 @@ requireAdmin({
 });
 
 function initShell(user, profile) {
-  setText("admin-email", `${profile.email || user.email || "Admin"} · admin enabled`);
+  setText("admin-email", profile.email || user.email || "Admin");
   setText("drive-meta", `${CONFIG.eventName} • ${formatDriveDate(CONFIG.bloodDriveDate)} • ${CONFIG.location}`);
   $("logout")?.addEventListener("click", logout);
 }
@@ -85,8 +85,6 @@ function fillFilters() {
   PAGE_SIZE_OPTIONS.forEach((size) => $("page-size")?.append(new Option(`${size} per page`, String(size), size === 25, size === 25)));
   fillSelect("filter-age", [["16", "Exactly 16"], ["17plus", "17+"], ["unknown", "Unknown age"]]);
   fillSelect("filter-nhs", [["yes", "In NHS"], ["no", "Not in NHS"]]);
-  fillSelect("filter-confirmation-email", emailStatusOptions());
-  fillSelect("filter-consent-email", emailStatusOptions());
 }
 
 function fillSelect(id, options) {
@@ -95,12 +93,9 @@ function fillSelect(id, options) {
   options.forEach(([value, label]) => select.append(new Option(label, value)));
 }
 
-function emailStatusOptions() {
-  return [["sent", "Sent"], ["pending", "Pending"], ["failed", "Failed"], ["not_applicable", "Not applicable"], ["unknown", "Unknown / not tracked"]];
-}
 
 function bindFilters() {
-  ["search", "filter-slot", "filter-senator", "filter-age", "filter-nhs", "filter-confirmation-email", "filter-consent-email"].forEach((id) => {
+  ["search", "filter-slot", "filter-senator", "filter-age", "filter-nhs"].forEach((id) => {
     $(id)?.addEventListener("input", () => {
       tableState.page = 1;
       renderRegistrations();
@@ -112,7 +107,7 @@ function bindFilters() {
     renderRegistrations();
   });
   $("clear-filters")?.addEventListener("click", () => {
-    ["search", "filter-slot", "filter-senator", "filter-age", "filter-nhs", "filter-confirmation-email", "filter-consent-email"].forEach((id) => { if ($(id)) $(id).value = ""; });
+    ["search", "filter-slot", "filter-senator", "filter-age", "filter-nhs"].forEach((id) => { if ($(id)) $(id).value = ""; });
     tableState = { sortKey: "createdAt", sortDirection: "desc", page: 1, pageSize: Number($("page-size")?.value) || 25 };
     renderRegistrations();
   });
@@ -160,9 +155,6 @@ function filteredRecords() {
   const senator = $("filter-senator")?.value || "";
   const age = $("filter-age")?.value || "";
   const nhs = $("filter-nhs")?.value || "";
-  const confirmationEmail = $("filter-confirmation-email")?.value || "";
-  const consentEmail = $("filter-consent-email")?.value || "";
-
   return registrations.filter((record) => {
     const searchable = [record.studentId, record.firstName, record.lastName, record.studentEmail, record.parentEmail, record.id].join(" ").toLowerCase();
     if (search && !searchable.includes(search)) return false;
@@ -173,8 +165,6 @@ function filteredRecords() {
     if (age === "unknown" && Number.isFinite(Number(record.ageOnDriveDate))) return false;
     if (nhs === "yes" && !record.nhsSeniorMember) return false;
     if (nhs === "no" && record.nhsSeniorMember) return false;
-    if (confirmationEmail && emailStatus(record.confirmationEmailStatus) !== confirmationEmail) return false;
-    if (consentEmail && emailStatus(record.consentEmailStatus || record.parentConsentEmailStatus) !== consentEmail) return false;
     return true;
   });
 }
@@ -206,7 +196,7 @@ function renderTable(records) {
   if (!records.length) {
     const row = document.createElement("tr");
     const cell = document.createElement("td");
-    cell.colSpan = 14;
+    cell.colSpan = 13;
     cell.textContent = "No registrations to display.";
     row.appendChild(cell);
     rows.appendChild(row);
@@ -214,7 +204,7 @@ function renderTable(records) {
   }
   records.forEach((record) => {
     const row = document.createElement("tr");
-    [record.id, formatTimestamp(record.createdAt), record.firstName, record.lastName, record.parentEmail, record.studentEmail, record.phone, formatDate(record.dob), record.studentId, yesNo(record.nhsSeniorMember), (record.senatorIds || []).map(senatorName).join(", "), slotLabel(record.appointmentSlotId), record.ageOnDriveDate, `${statusLabel(record.confirmationEmailStatus)} / ${statusLabel(record.consentEmailStatus || record.parentConsentEmailStatus)}`]
+    [record.id, formatTimestamp(record.createdAt), record.firstName, record.lastName, record.parentEmail, record.studentEmail, record.phone, formatDate(record.dob), record.studentId, yesNo(record.nhsSeniorMember), (record.senatorIds || []).map(senatorName).join(", "), slotLabel(record.appointmentSlotId), record.ageOnDriveDate]
       .forEach((value) => {
         const cell = document.createElement("td");
         cell.textContent = value ?? "";
@@ -242,7 +232,7 @@ function showDetail(record) {
   close.type = "button";
   close.textContent = "Close";
   header.append(title, close);
-  card.append(header, detailSection("Registration", [["Confirmation ID", record.id], ["Date submitted", formatTimestamp(record.createdAt)], ["Appointment", slotLabel(record.appointmentSlotId)], ["Blood drive date", formatDriveDate(record.bloodDriveDate || CONFIG.bloodDriveDate)], ["Location", record.location || CONFIG.location]]), detailSection("Student", [["First name", record.firstName], ["Last name", record.lastName], ["Student email", record.studentEmail], ["Parent email", record.parentEmail], ["Phone", record.phone], ["Birthdate", formatDate(record.dob)], ["Age on drive date", record.ageOnDriveDate], ["Student ID", record.studentId], ["In NHS?", yesNo(record.nhsSeniorMember)], ["Senator(s) assisted", (record.senatorIds || []).map(senatorName).join(", ")]]), detailSection("Eligibility and messages", [["Parent consent status", statusLabel(record.parentConsentStatus)], ["Confirmation email status", statusLabel(record.confirmationEmailStatus)], ["Consent email status", statusLabel(record.consentEmailStatus || record.parentConsentEmailStatus)], ["Age confirmed", yesNo(record.eligibilityAgeConfirmed)], ["No fall sport confirmed", yesNo(record.eligibilityNoFallSportConfirmed)], ["Schema version", record.schemaVersion]]));
+  card.append(header, detailSection("Registration", [["Confirmation ID", record.id], ["Date submitted", formatTimestamp(record.createdAt)], ["Appointment", slotLabel(record.appointmentSlotId)], ["Blood drive date", formatDriveDate(record.bloodDriveDate || CONFIG.bloodDriveDate)], ["Location", record.location || CONFIG.location]]), detailSection("Student", [["First name", record.firstName], ["Last name", record.lastName], ["Student email", record.studentEmail], ["Parent email", record.parentEmail], ["Phone", record.phone], ["Birthdate", formatDate(record.dob)], ["Age on drive date", record.ageOnDriveDate], ["Student ID", record.studentId], ["In NHS?", yesNo(record.nhsSeniorMember)], ["Senator(s) assisted", (record.senatorIds || []).map(senatorName).join(", ")]]), detailSection("Eligibility", [["Parent consent status", statusLabel(record.parentConsentStatus)], ["Age confirmed", yesNo(record.eligibilityAgeConfirmed)], ["No fall sport confirmed", yesNo(record.eligibilityNoFallSportConfirmed)], ["Schema version", record.schemaVersion]]));
   modal.appendChild(card);
   root.appendChild(modal);
   close.addEventListener("click", () => { root.textContent = ""; });
@@ -295,8 +285,8 @@ function renderStats(records) {
   stats.append(
     statGrid([["Total registrations", total], ["Registrations today", todayCount], ["Registrations this week", weekCount], ["Remaining available appointments", Math.max(0, capacity - total)], ["Number of 16-year-olds", age16], ["Number of students 17+", age17Plus]]),
     chartPanel("Registrations over time", "Daily registrations through drive day.", byDate.map((entry) => ({ label: shortDate(entry.date), value: entry.count })), [`Total registrations — ${total}`, `Average registrations per day — ${average}`, `Highest-registration day — ${shortDate(highestDay.date)} (${highestDay.count})`, `Registration growth over time — ${total} cumulative registrations`]),
-    chartPanel("Appointment analytics", "Capacity filled for each appointment slot.", slotCounts.map((slot) => ({ label: slot.label, value: slot.count, max: slot.capacity })), [`Most popular appointment time — ${popular(slotCounts, true)}`, `Least popular appointment time — ${popular(slotCounts, false)}`].concat(slotCounts.map((slot) => `${slot.label} — ${slot.count}/${slot.capacity} (${Math.round((slot.count / slot.capacity) * 100)}%)`))),
-    chartPanel("Senator analytics", "Each listed senator receives credit when multiple senators helped one signup.", senatorRows.map((senator) => ({ label: senator.name, value: senator.count })), senatorRows.map((senator, index) => `${index + 1}. ${senator.name} — ${senator.count} (${percent(senator.count, total)})`)),
+    chartPanel("Appointment analytics", "Capacity filled for each appointment slot.", slotCounts.map((slot) => ({ label: slot.label, value: slot.count, max: slot.capacity })), appointmentRows(slotCounts), { listClass: "appointment-list" }),
+    chartPanel("Senator analytics", "Each listed senator receives credit when multiple senators helped one signup.", senatorRows.map((senator) => ({ label: senator.name, value: senator.count })), senatorLeaderboardRows(senatorRows, total), { panelClass: "senator-panel", chartClass: "diagonal-labels", listClass: "leaderboard-list" }),
     piePanel("Age split", [{ label: "Exactly 16", value: age16, color: "#0e60ab" }, { label: "17+", value: age17Plus, color: "#47a3f3" }])
   );
 }
@@ -315,12 +305,12 @@ function statGrid(items) {
   return grid;
 }
 
-function chartPanel(title, description, data, rows) {
+function chartPanel(title, description, data, rows, options = {}) {
   const panel = document.createElement("section");
-  panel.className = "panel";
+  panel.className = ["panel", options.panelClass].filter(Boolean).join(" ");
   const max = Math.max(1, ...data.map((item) => item.max || item.value));
   const chart = document.createElement("div");
-  chart.className = "chart";
+  chart.className = ["chart", options.chartClass].filter(Boolean).join(" ");
   data.forEach((item) => {
     const bar = document.createElement("div");
     bar.className = "bar";
@@ -331,7 +321,7 @@ function chartPanel(title, description, data, rows) {
     bar.querySelector("span").textContent = item.label;
     chart.appendChild(bar);
   });
-  panel.append(headingBlock(title, description), chart, listElement(rows));
+  panel.append(headingBlock(title, description), chart, listElement(rows, options.listClass));
   return panel;
 }
 
@@ -363,28 +353,41 @@ function headingBlock(title, description) {
   return wrap;
 }
 
-function listElement(rows) {
+function listElement(rows, extraClass = "") {
   const list = document.createElement("div");
-  list.className = "list analytics-list";
-  rows.forEach((text) => {
+  list.className = ["list", "analytics-list", extraClass].filter(Boolean).join(" ");
+  rows.forEach((row) => {
     const item = document.createElement("div");
-    item.className = "list-row";
-    item.textContent = text;
+    item.className = ["list-row", row.className].filter(Boolean).join(" ");
+    item.textContent = row.text || row;
     list.appendChild(item);
   });
   return list;
 }
 
-function emailStatus(value) {
-  const status = String(value || "unknown").toLowerCase().replace(/-/g, "_");
-  if (["sent", "pending", "failed", "not_applicable"].includes(status)) return status;
-  return "unknown";
+function appointmentRows(slotCounts) {
+  const summaryRows = [
+    { text: `Most popular appointment time — ${popular(slotCounts, true)}`, className: "featured-row" },
+    { text: `Least popular appointment time — ${popular(slotCounts, false)}`, className: "featured-row" },
+  ];
+  const slotRows = slotCounts.map((slot) => ({
+    text: `${slot.label}: ${slot.count} spots filled of ${slot.capacity} (${Math.round((slot.count / slot.capacity) * 100)}% filled)`,
+    className: "subtle-row",
+  }));
+  return summaryRows.concat(slotRows);
+}
+
+function senatorLeaderboardRows(senatorRows, total) {
+  return senatorRows.map((senator, index) => ({
+    text: `#${index + 1} ${senator.name} — ${senator.count} registrations (${percent(senator.count, total)})`,
+    className: "leaderboard-row",
+  }));
 }
 
 function statusLabel(value) {
-  const labels = { required: "Required", not_required: "Not required", sent: "Sent", pending: "Pending", failed: "Failed", not_applicable: "Not applicable", unknown: "Unknown / not tracked" };
+  const labels = { required: "Required", not_required: "Not required", unknown: "Unknown / not tracked" };
   const normalized = String(value || "unknown").toLowerCase().replace(/-/g, "_");
-  return labels[normalized] || labels[emailStatus(value)] || value || "Unknown / not tracked";
+  return labels[normalized] || value || "Unknown / not tracked";
 }
 function yesNo(value) { return value ? "Yes" : "No"; }
 function senatorName(id) { return SENATORS.find((senator) => senator.id === id)?.name || id || ""; }
