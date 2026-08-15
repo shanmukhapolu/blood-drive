@@ -1,9 +1,17 @@
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
 const { onDocumentDeleted } = require("firebase-functions/v2/firestore");
 const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
 
 admin.initializeApp();
+
+const ADMIN_ALLOWED_ORIGINS = [
+  "https://blood-drive.netlify.app",
+  "https://blood-drive-test.web.app",
+  "https://blood-drive-test.firebaseapp.com",
+  /^http:\/\/localhost(?::\d+)?$/,
+  /^http:\/\/127\.0\.0\.1(?::\d+)?$/,
+];
 
 /**
  * Returns all registration records to enabled admins through the Admin SDK.
@@ -13,8 +21,49 @@ admin.initializeApp();
  * the server performs one consistent authorization check against the `admins`
  * collection using the caller's verified Firebase Auth token.
  */
-exports.listAdminRegistrations = onCall(async (request) => {
-  const auth = request.auth;
+exports.listAdminRegistrations = onCall({ cors: ADMIN_ALLOWED_ORIGINS }, async (request) => {
+  return listAdminRegistrationsForAuth(request.auth);
+});
+
+/**
+ * HTTP fallback for browsers/environments where callable preflight handling is
+ * blocked by hosting or Firebase proxy behavior. The admin dashboard tries the
+ * callable first, then this endpoint with the same Firebase ID token.
+ */
+exports.listAdminRegistrationsHttp = onRequest({ cors: false }, async (req, res) => {
+  setCorsHeaders(req, res);
+
+  if (req.method === "OPTIONS") {
+    res.status(204).send("");
+    return;
+  }
+
+  if (req.method !== "POST") {
+    res.status(405).json({ error: { code: "method-not-allowed", message: "Use POST for this endpoint." } });
+    return;
+  }
+
+  try {
+    const idToken = getBearerToken(req);
+    if (!idToken) {
+      throw new HttpsError("unauthenticated", "Sign in before opening the admin dashboard.");
+    }
+
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    const payload = await listAdminRegistrationsForAuth({ uid: decodedToken.uid, token: decodedToken });
+    res.status(200).json({ data: payload });
+  } catch (error) {
+    const normalized = normalizeHttpsError(error);
+    logger.warn("Admin registration HTTP endpoint failed", {
+      code: normalized.code,
+      message: normalized.message,
+      origin: req.get("origin") || "missing",
+    });
+    res.status(normalized.status).json({ error: { code: normalized.code, message: normalized.message } });
+  }
+});
+
+async function listAdminRegistrationsForAuth(auth) {
   if (!auth?.uid) {
     throw new HttpsError("unauthenticated", "Sign in before opening the admin dashboard.");
   }
@@ -34,7 +83,7 @@ exports.listAdminRegistrations = onCall(async (request) => {
     adminDocumentId: adminProfile.id,
     registrations: snapshot.docs.map((doc) => serializeDocument(doc)),
   };
-});
+}
 
 async function getEnabledAdminProfile(auth) {
   const candidates = [auth.uid];
@@ -54,6 +103,42 @@ async function getEnabledAdminProfile(auth) {
   }
 
   return null;
+}
+
+function setCorsHeaders(req, res) {
+  const origin = req.get("origin") || "";
+  if (isAllowedOrigin(origin)) {
+    res.set("Access-Control-Allow-Origin", origin);
+    res.set("Vary", "Origin");
+  }
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Authorization, Content-Type");
+  res.set("Access-Control-Max-Age", "3600");
+}
+
+function isAllowedOrigin(origin) {
+  return ADMIN_ALLOWED_ORIGINS.some((allowedOrigin) => {
+    if (typeof allowedOrigin === "string") return allowedOrigin === origin;
+    return allowedOrigin.test(origin);
+  });
+}
+
+function getBearerToken(req) {
+  const authorization = req.get("authorization") || "";
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+  return match?.[1] || "";
+}
+
+function normalizeHttpsError(error) {
+  const code = error?.code || "internal";
+  const message = error?.message || "Unable to load registration data.";
+  const statusByCode = {
+    unauthenticated: 401,
+    "permission-denied": 403,
+    "invalid-argument": 400,
+    "method-not-allowed": 405,
+  };
+  return { code, message, status: statusByCode[code] || 500 };
 }
 
 function serializeDocument(doc) {
