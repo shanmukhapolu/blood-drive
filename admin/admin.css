@@ -544,3 +544,27 @@ tbody tr:hover td {
     grid-template-columns: 1fr;
   }
 }
+
+.simple-toolbar {
+  grid-template-columns: minmax(260px, 1.5fr) minmax(180px, 1fr) minmax(180px, 1fr);
+}
+
+.detail-json {
+  max-height: min(65vh, 720px);
+  overflow: auto;
+  margin: 0;
+  padding: 16px;
+  border: 1px solid var(--admin-border);
+  border-radius: var(--admin-radius-md);
+  background: #0f172a;
+  color: #e5e7eb;
+  font-size: 0.86rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 760px) {
+  .simple-toolbar {
+    grid-template-columns: 1fr;
+  }
+}

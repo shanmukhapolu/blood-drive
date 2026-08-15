@@ -60,8 +60,9 @@ service cloud.firestore {
     // can read registration data.
     // ------------------------------------------------------------------
     match /admins/{adminId} {
-      allow read: if request.auth != null
-        && (adminId == request.auth.uid || adminId == request.auth.token.email);
+      // Simple admin model: signed-in users may read admin profile records so
+      // the dashboard can find a matching enabled admin by UID or email.
+      allow read: if request.auth != null;
       allow create: if request.auth != null
         && adminId == request.auth.uid
         && request.resource.data.keys().hasOnly(['email', 'role', 'status', 'createdAt'])
@@ -197,6 +198,5 @@ function isAdmin() {
 }
 
 function isEnabledAdmin(data) {
-  return data.role == 'admin'
-    && (data.status == 'enabled' || data.enabled == true || data.active == true);
+  return data.role == 'admin' && data.status == 'enabled';
 }
