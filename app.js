@@ -413,13 +413,6 @@ export function validateForm(formEl, currentSelectedSlotId) {
  * single Firestore transaction. If a slotCounts document has not been seeded
  * yet, the first valid registration initializes it with count 1 so registration
  * is not blocked by setup lag; concurrent students still cannot overbook.
- *
- * IMPORTANT (see README "Production Requirements"): this client-side
- * transaction is an MVP-appropriate mechanism, but the ultimate trust
- * boundary for production must be a Cloud Function that re-validates
- * eligibility, rate-limits requests, and performs duplicate detection that
- * the public client is not permitted to do (it cannot read `registrations`
- * at all).
  */
 async function reserveSlotAndCreateRegistration(payload) {
   const slotRef = doc(db, "slotCounts", slotDocId(payload.appointmentSlotId));
