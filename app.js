@@ -362,7 +362,7 @@ export function validateForm(formEl, currentSelectedSlotId) {
   }
 
   if (selectedSenators.length === 0) {
-    setError("senators", "Select at least one signup helper.");
+    setError("senators", "Select at least one senator who assisted you.");
     valid = false;
   }
 
@@ -396,9 +396,10 @@ export function validateForm(formEl, currentSelectedSlotId) {
 // ============================================================================
 
 /**
- * Atomically checks capacity and creates the registration document in a
- * single Firestore transaction, so two students competing for the last slot
- * cannot both succeed.
+ * Atomically reserves capacity and creates the registration document in a
+ * single Firestore transaction. If a slotCounts document has not been seeded
+ * yet, the first valid registration initializes it with count 1 so registration
+ * is not blocked by setup lag; concurrent students still cannot overbook.
  *
  * IMPORTANT (see README "Production Requirements"): this client-side
  * transaction is an MVP-appropriate mechanism, but the ultimate trust
@@ -414,7 +415,20 @@ async function reserveSlotAndCreateRegistration(payload) {
   await runTransaction(db, async (tx) => {
     const slotSnap = await tx.get(slotRef);
     if (!slotSnap.exists()) {
-      throw new Error("SLOT_UNAVAILABLE");
+      const slot = TIME_SLOTS.find((s) => s.id === payload.appointmentSlotId);
+      if (!slot) {
+        throw new Error("SLOT_UNAVAILABLE");
+      }
+
+      tx.set(slotRef, {
+        bloodDriveId: CONFIG.bloodDriveId,
+        slotId: slot.id,
+        label: slot.label,
+        capacity: slot.capacity,
+        count: 1,
+      });
+      tx.set(registrationRef, buildRegistrationRecord(payload));
+      return;
     }
     const slotData = slotSnap.data();
     if (typeof slotData.capacity !== "number" || typeof slotData.count !== "number") {
@@ -425,30 +439,34 @@ async function reserveSlotAndCreateRegistration(payload) {
     }
 
     tx.update(slotRef, { count: slotData.count + 1 });
-    tx.set(registrationRef, {
-      schemaVersion: CONFIG.schemaVersion,
-      bloodDriveId: CONFIG.bloodDriveId,
-      bloodDriveDate: CONFIG.bloodDriveDate,
-      location: CONFIG.location,
-      firstName: payload.firstName,
-      lastName: payload.lastName,
-      studentEmail: payload.studentEmail,
-      parentEmail: payload.parentEmail,
-      phone: payload.phone,
-      dob: payload.dob,
-      studentId: payload.studentId,
-      senatorIds: payload.senatorIds,
-      appointmentSlotId: payload.appointmentSlotId,
-      ageOnDriveDate: payload.eligibility.age,
-      parentConsentStatus: payload.eligibility.status === "consent-required" ? "required" : "not_required",
-      eligibilityAgeConfirmed: payload.eligibilityAgeConfirmed,
-      eligibilityNoFallSportConfirmed: payload.eligibilityNoFallSportConfirmed,
-      nhsSeniorMember: payload.nhsSeniorMember,
-      createdAt: serverTimestamp(),
-    });
+    tx.set(registrationRef, buildRegistrationRecord(payload));
   });
 
   return registrationRef.id;
+}
+
+function buildRegistrationRecord(payload) {
+  return {
+    schemaVersion: CONFIG.schemaVersion,
+    bloodDriveId: CONFIG.bloodDriveId,
+    bloodDriveDate: CONFIG.bloodDriveDate,
+    location: CONFIG.location,
+    firstName: payload.firstName,
+    lastName: payload.lastName,
+    studentEmail: payload.studentEmail,
+    parentEmail: payload.parentEmail,
+    phone: payload.phone,
+    dob: payload.dob,
+    studentId: payload.studentId,
+    senatorIds: payload.senatorIds,
+    appointmentSlotId: payload.appointmentSlotId,
+    ageOnDriveDate: payload.eligibility.age,
+    parentConsentStatus: payload.eligibility.status === "consent-required" ? "required" : "not_required",
+    eligibilityAgeConfirmed: payload.eligibilityAgeConfirmed,
+    eligibilityNoFallSportConfirmed: payload.eligibilityNoFallSportConfirmed,
+    nhsSeniorMember: payload.nhsSeniorMember,
+    createdAt: serverTimestamp(),
+  };
 }
 
 async function submitRegistration(event) {
@@ -500,7 +518,7 @@ function handleSubmissionError(error) {
   if (code === "permission-denied") {
     setError(
       "submit",
-      "Registration could not be saved because Firebase permissions blocked the request. Please ask the organizers to deploy the latest Firestore rules and confirm the appointment slots are seeded."
+      "Registration could not be saved because Firebase permissions blocked the request. Please ask the organizers to deploy the latest Firestore rules."
     );
     announce("Registration could not be saved because Firebase permissions blocked the request.");
     return;
@@ -535,6 +553,7 @@ function announce(message) {
 // ============================================================================
 
 function showConfirmation({ firstName, lastName, senatorIds, appointmentSlotId, parentConsentRequired, confirmationId }) {
+  document.body.classList.add("confirmation-mode");
   form.classList.add("hidden");
   confirmationView.classList.remove("hidden");
 
@@ -545,7 +564,6 @@ function showConfirmation({ firstName, lastName, senatorIds, appointmentSlotId, 
     .join(", ");
 
   setText("sum-student", `${firstName} ${lastName}`);
-  setText("sum-drive", CONFIG.eventName);
   setText("sum-date", formatDisplayDate(CONFIG.bloodDriveDate, { weekday: true }));
   setText("sum-location", CONFIG.location);
   setText("sum-slot", slot ? slot.label : "");
@@ -570,6 +588,7 @@ function resetForm() {
   consentBanner.classList.add("hidden");
   document.querySelectorAll(".senator-chip.checked").forEach((el) => el.classList.remove("checked"));
 
+  document.body.classList.remove("confirmation-mode");
   confirmationView.classList.add("hidden");
   form.classList.remove("hidden");
 

@@ -18,10 +18,10 @@ build step, no Firebase Auth sign-up request, and no student-facing accounts, da
 1. Student opens the URL and immediately sees the registration form (no
    homepage, nav bar, or marketing content).
 2. Student fills in their information, confirms eligibility, selects the
-   signup helper(s), and picks an open appointment slot.
+   senator(s) who assisted you, and picks an open appointment slot.
 3. Student submits the form.
 4. Student sees a confirmation screen with only the details they need
-   (name, drive, date, location, appointment, signup helper(s), confirmation ID)
+   (name, date, location, appointment, senator(s) who assisted you, confirmation ID)
    and can print it or register another student.
 
 Students under 16 (as of the blood-drive date) cannot submit the form.
@@ -38,6 +38,10 @@ Firestore (MVP: direct client transaction, see Section 15 below)
         |
         +--> slotCounts/{bloodDriveId}_{slotId}   (read + narrowly validated increment)
         +--> registrations/{autoId}               (create-only, narrowly validated)
+        |
+        v
+Cloud Function: releaseSlotOnRegistrationDelete
+        +--> decrements slotCounts when an organizer deletes a registration
 ```
 
 Files:
@@ -46,12 +50,13 @@ Files:
 |---|---|
 | `index.html` | Markup for the form and confirmation view. |
 | `style.css` | All styling. |
-| `config.js` | Single source of truth for event details, signup helpers, and time slots. |
+| `config.js` | Single source of truth for event details, senators, and time slots. |
 | `firebase-init.js` | Firebase app/auth/analytics initialization only; no UI logic. |
 | `app.js` | Form rendering, validation, eligibility logic, and submission. |
 | `firestore.rules` | Authoritative server-side access control (see Section 5). |
 | `firestore.indexes.json` | Intentionally empty; see Section 9. |
-| `firebase.json` | Firebase Hosting + Firestore deployment configuration. |
+| `firebase.json` | Firebase Hosting, Firestore, and Functions deployment configuration. |
+| `functions/` | Firebase Cloud Function that reopens a slot when its registration is deleted. |
 | `assets/parent-consent-placeholder.txt` | Placeholder only; **not** an official consent form. |
 
 ## 4. Firestore Schema
@@ -89,15 +94,15 @@ identifiers tied to a specific student.
 
 ### `slotCounts/{bloodDriveId}_{slotId}`
 
-Non-PII capacity counters, pre-seeded by an administrator (see Section 7).
+Non-PII capacity counters, optionally pre-seeded by an administrator or initialized by the first valid reservation for a known appointment slot (see Section 7).
 
 | Field | Type | Notes |
 |---|---|---|
 | `bloodDriveId` | string | |
 | `slotId` | string | |
 | `label` | string | e.g. `"10:15 AM"`. |
-| `capacity` | number | Fixed at seed time; clients cannot change it. |
-| `count` | number | Only mutable via a validated +1 increment (see rules). |
+| `capacity` | number | Fixed at 10 by public-client creates; clients cannot change it after creation. |
+| `count` | number | Starts at 1 for first-registration initialization, then increments on signup and is decremented by the delete trigger when an organizer removes a registration. |
 
 ## 5. Security Model (MVP)
 
@@ -113,9 +118,13 @@ Non-PII capacity counters, pre-seeded by an administrator (see Section 7).
   are rejected outright (`hasOnly(...)`).
 - **`slotCounts` is intentionally separate** from `registrations` so the UI
   can show live "spots left" without any read access to student data. It
-  contains no PII. Clients can only increment `count` by exactly 1, never
-  past `capacity`, and cannot touch any other field; enforced by
-  `firestore.rules`, not by client trust.
+  contains no PII. Clients can initialize a missing slot counter only as
+  the first valid reservation for a known appointment slot (`count: 1`),
+  then can only increment `count` by exactly 1, never past `capacity`, and
+  cannot touch any other field; enforced by `firestore.rules`, not by
+  client trust. When an organizer deletes a registration directly in
+  Firestore, `releaseSlotOnRegistrationDelete` decrements the matching
+  counter so that the appointment spot reopens.
 - **Default deny everything else**: `match /{document=**} { allow read,
   write: if false; }`.
 - **No admin dashboard exists in this codebase.** There is no `/admin`
@@ -142,26 +151,25 @@ is not, and does not claim to be, "FERPA compliant" on its own.
 1. Create/select the Firebase project referenced in `firebase-init.js`
    (`blood-drive-test`) or your own project, and update the config there.
 2. Enable Firestore in Native mode.
-3. **Seed `slotCounts` documents before opening registration.** For each
-   entry in `TIME_SLOTS` (see `config.js`), create a document at
-   `slotCounts/{bloodDriveId}_{slotId}` with:
+3. Optional: pre-seed `slotCounts` documents before opening registration if
+   you want every slot to appear from the Firebase console immediately. If a
+   counter is missing, the first valid registration for that slot creates it
+   atomically with `count: 1`:
    ```json
-   { "bloodDriveId": "chs-fall-2026", "slotId": "0900", "label": "9:00 AM", "capacity": 4, "count": 0 }
+   { "bloodDriveId": "chs-fall-2026", "slotId": "0900", "label": "9:00 AM", "capacity": 10, "count": 1 }
    ```
-   This can be done via the Firebase console or a one-time authenticated
-   admin script; **never** from this public client, and never with the
-   Admin SDK's credentials embedded in frontend code.
+   Admin-created seed documents should use the same shape with `count: 0`.
+   Never embed Admin SDK credentials in frontend code.
 4. Set the real Firebase Web API key in `firebase-init.js` (this value is
    not a secret; see the comment in that file for why).
 
 ## 8. Rules Deployment
 
 ```bash
-firebase deploy --only firestore:rules
+firebase deploy --only firestore:rules,functions
 ```
 
-Review `firestore.rules` with district technology staff before deploying
-against a project containing real student data.
+Review `firestore.rules` and the Cloud Function with district technology staff before deploying against a project containing real student data.
 
 ## 9. Local Testing
 
@@ -177,8 +185,7 @@ direct document ID, **no composite indexes are required**;
 query (e.g. an approved admin export), document why each new index exists
 in this file's comments before adding it.
 
-To test the full flow, seed at least one `slotCounts` document (Section 7),
-open the page, fill out the form with **fictional data only**, and submit.
+To test the full flow, open the page, fill out the form with **fictional data only**, and submit. Then delete that test registration from Firestore and confirm the matching `slotCounts` document decrements by 1 after the deployed `releaseSlotOnRegistrationDelete` function runs.
 
 ## 10. Production Requirements
 
@@ -252,21 +259,33 @@ approval before going live.
 
 ## 15. Appointment Transaction Requirements
 
+Signups remain atomic and slot availability is reopened after manual admin deletion.
 `app.js` uses a single Firestore `runTransaction()` that:
 
 1. Reads the current `slotCounts` document for the requested slot.
-2. Rejects if the slot document doesn't exist or is already at capacity
-   (`SLOT_FULL` / `SLOT_UNAVAILABLE`), which the UI surfaces as
-   *"That appointment just filled up. Please choose another time."*
-3. Otherwise increments `count` by 1 and creates the `registrations`
+2. If the slot counter is missing but the requested slot exists in
+   `TIME_SLOTS`, creates the counter with `count: 1` and creates the
+   `registrations` document in the same commit.
+3. Rejects if an existing slot counter is already at capacity
+   (`SLOT_FULL`) or malformed/unknown (`SLOT_UNAVAILABLE`), which the UI
+   surfaces as *"That appointment just filled up. Please choose another
+   time."*
+4. Otherwise increments `count` by 1 and creates the `registrations`
    document; both writes commit atomically, or neither does.
 
-`firestore.rules` independently re-validates the increment (exactly +1,
-never past `capacity`, no other field changed) and the registration schema,
+`firestore.rules` independently re-validates first-reservation counter
+creation, subsequent increments (exactly +1, never past `capacity`, no
+other field changed), and the registration schema,
 so this guarantee does not depend on trusting the browser. As noted in
-Section 10, production should still move final authority to a Cloud
-Function for rate limiting and duplicate detection that rules alone cannot
+Section 10, production should still move final registration creation authority
+to a Cloud Function for rate limiting and duplicate detection that rules alone cannot
 provide.
+
+The deployed `releaseSlotOnRegistrationDelete` function listens for
+`registrations/{registrationId}` deletes. If an organizer deletes a
+registration in the Firebase console, the function transactionally decrements
+`slotCounts/{bloodDriveId}_{appointmentSlotId}` without letting the count go
+below zero, so the public form can show and accept the reopened spot.
 
 ## 16. Security Checklist
 
@@ -291,9 +310,10 @@ provide.
 - [x] Students cannot access other students' information
 - [x] Admin access is not publicly exposed (no admin UI exists in this MVP)
 - [x] Appointment capacity cannot be bypassed by manipulating frontend JavaScript (enforced by `firestore.rules`, not just `app.js`)
-- [ ] Production architecture includes server-side validation *(Cloud Function; not yet built; see Section 10)*
+- [ ] Production architecture includes server-side registration validation *(a delete-reconciliation Cloud Function exists; final registration endpoint still requires Section 10)*
 - [ ] Production architecture includes rate limiting *(requires a backend; not possible from rules alone)*
 - [x] Production architecture uses atomic appointment reservation *(implemented via Firestore transaction + rules; see Section 15)*
+- [x] Deleting a registration reopens its appointment slot *(implemented by `releaseSlotOnRegistrationDelete`; see Section 15)*
 - [ ] Duplicate registrations are handled server-side *(not possible from a public client with no read access; requires Section 10's Cloud Function)*
 - [ ] Retention policy is explicitly determined before production *(Section 11)*
 - [ ] District technology/privacy approval is required before real student data is collected
@@ -304,8 +324,8 @@ Before this system collects any real student data, confirm with Carmel
 Clay Schools technology/privacy staff:
 
 - [ ] Firestore Security Rules have been reviewed line-by-line.
-- [ ] A production backend (Cloud Function) has been built for rate
-      limiting, duplicate detection, and authoritative eligibility
+- [ ] A production registration backend (Cloud Function) has been built for
+      rate limiting, duplicate detection, and authoritative eligibility
       re-verification.
 - [ ] The Firebase project's IAM/service-account access is restricted to
       approved district/IT staff only.
