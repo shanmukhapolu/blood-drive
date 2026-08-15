@@ -4,7 +4,8 @@ rules_version = '2';
 // Firestore Security Rules: Carmel HS Blood Drive (MVP)
 //
 // THREAT MODEL / GOALS
-//   - No public client may ever read a "registrations" document.
+//   - No public client may ever read a "registrations" document; only authenticated
+//     enabled admins may read registrations directly through Firestore rules.
 //   - No client may ever update or delete a "registrations" document.
 //   - A public client may create a "registrations" document ONLY if it exactly
 //     matches the expected, narrowly-validated schema for the current
@@ -189,7 +190,8 @@ function isAdmin() {
       (exists(/databases/$(database)/documents/admins/$(request.auth.uid))
         && isEnabledAdmin(get(/databases/$(database)/documents/admins/$(request.auth.uid)).data))
       ||
-      (exists(/databases/$(database)/documents/admins/$(request.auth.token.email))
+      (request.auth.token.email is string
+        && exists(/databases/$(database)/documents/admins/$(request.auth.token.email))
         && isEnabledAdmin(get(/databases/$(database)/documents/admins/$(request.auth.token.email)).data))
     );
 }

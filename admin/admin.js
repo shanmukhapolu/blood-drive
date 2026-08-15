@@ -1,6 +1,7 @@
 import { CONFIG, TIME_SLOTS } from "../config.js";
+import { db } from "../firebase-init.js";
 import { auth, requireAdmin, logout } from "./auth.js";
-import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-functions.js";
+import { collection, getDocs, limit, orderBy, query } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
 
 const PAGE_SIZE = 25;
 const DEFAULT_SORT_KEY = "createdAt";
@@ -13,9 +14,6 @@ let filteredRegistrations = [];
 let page = 1;
 let sortKey = DEFAULT_SORT_KEY;
 let sortDir = "desc";
-const functions = getFunctions();
-const listAdminRegistrations = httpsCallable(functions, "listAdminRegistrations");
-const listAdminRegistrationsHttpUrl = "https://us-central1-blood-drive-test.cloudfunctions.net/listAdminRegistrationsHttp";
 let loadingRegistrations = false;
 
 const columns = [
@@ -101,16 +99,12 @@ async function watchRegistrations(onRecords) {
 
   debugAdminCheckpoint("registrations-fetch-start", {
     collection: REGISTRATIONS_COLLECTION,
-    source: "listAdminRegistrations callable",
+    source: "Firestore Web SDK",
   });
 
   try {
-    const data = await fetchAdminRegistrations();
-    const records = Array.isArray(data?.registrations) ? data.registrations : [];
-    debugAdminCheckpoint("registrations-fetch-success", {
-      count: records.length,
-      adminDocumentId: redactId(data?.adminDocumentId),
-    });
+    const records = await fetchAdminRegistrations();
+    debugAdminCheckpoint("registrations-fetch-success", { count: records.length });
     onRecords(records);
   } catch (error) {
     debugAdminCheckpoint("registrations-fetch-error", {
@@ -124,50 +118,26 @@ async function watchRegistrations(onRecords) {
 }
 
 async function fetchAdminRegistrations() {
-  try {
-    const result = await listAdminRegistrations();
-    debugAdminCheckpoint("registrations-fetch-callable-success");
-    return result.data;
-  } catch (callableError) {
-    debugAdminCheckpoint("registrations-fetch-callable-error", {
-      code: callableError?.code || "unknown",
-      message: callableError?.message || String(callableError),
-      fallback: "listAdminRegistrationsHttp",
-    });
-
-    if (!shouldTryHttpFallback(callableError)) throw callableError;
-    return fetchAdminRegistrationsHttp(callableError);
-  }
+  const registrationsQuery = query(
+    collection(db, REGISTRATIONS_COLLECTION),
+    orderBy(DEFAULT_SORT_KEY, "desc"),
+    limit(1000),
+  );
+  const snapshot = await getDocs(registrationsQuery);
+  return snapshot.docs.map((docSnap) => serializeDocument(docSnap));
 }
 
-function shouldTryHttpFallback(error) {
-  const code = error?.code || "";
-  return !code || code === "functions/internal" || code === "internal" || code === "functions/unavailable" || code === "unavailable";
+function serializeDocument(docSnap) {
+  return serializeValue({ id: docSnap.id, ...docSnap.data() });
 }
 
-async function fetchAdminRegistrationsHttp(originalError) {
-  const token = await auth.currentUser?.getIdToken(true);
-  if (!token) throw originalError;
-
-  debugAdminCheckpoint("registrations-fetch-http-start", { endpoint: listAdminRegistrationsHttpUrl });
-  const response = await fetch(listAdminRegistrationsHttpUrl, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({}),
-  });
-  const payload = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    const fallbackError = new Error(payload?.error?.message || `HTTP fallback failed with status ${response.status}.`);
-    fallbackError.code = payload?.error?.code || `http-${response.status}`;
-    throw fallbackError;
+function serializeValue(value) {
+  if (value?.toDate) return value.toDate().toISOString();
+  if (Array.isArray(value)) return value.map(serializeValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, serializeValue(entry)]));
   }
-
-  debugAdminCheckpoint("registrations-fetch-http-success");
-  return payload.data;
+  return value;
 }
 
 function showLoadError(error) {
@@ -175,8 +145,8 @@ function showLoadError(error) {
   const rawMessage = error?.message || String(error || "No error details returned.");
   const message =
     code === "permission-denied"
-      ? "The admin data endpoint denied access. Make sure your Firebase Auth user has an admins record whose document ID is your Firebase Auth UID or exact email, with role admin and status enabled, then deploy the latest functions."
-      : "Unable to load registration data from the secure admin endpoint. Please refresh or check Firebase configuration.";
+      ? "Firestore denied access to registrations. Make sure your Firebase Auth user has an admins record whose document ID is your Firebase Auth UID or exact email, with role admin and status enabled, then deploy the latest Firestore Security Rules."
+      : "Unable to load registration data directly from Firestore. Please refresh or check Firebase configuration.";
 
   if ($("counts")) $("counts").textContent = "Unable to load registrations";
   if ($("rows")) {
