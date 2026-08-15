@@ -50,23 +50,27 @@ async function initStatisticsPage() {
 
 async function loadRegistrations() {
   try {
-    const snapshot = await getDocs(
-      collection(db, REGISTRATIONS_COLLECTION)
-    );
+    const testId = "w19RtGA6Qy61P7uJrbzC";
 
-    console.log("[Admin Dashboard] registrations read:", snapshot.size);
+    const registrationRef = doc(db, "registrations", testId);
+    const snapshot = await getDoc(registrationRef);
 
-    return snapshot.docs.map((docSnap) =>
+    console.log("[Admin Dashboard] single registration read:", snapshot.exists());
+
+    if (!snapshot.exists()) {
+      console.log("[Admin Dashboard] registration does not exist");
+      return [];
+    }
+
+    return [
       serialize({
-        id: docSnap.id,
-        ...docSnap.data(),
-      })
-    );
+        id: snapshot.id,
+        ...snapshot.data(),
+      }),
+    ];
   } catch (error) {
-    console.error("[Admin Dashboard] registrations load failed:", error);
-    showError(
-      `Could not load registrations: ${error?.code || "unknown"}`
-    );
+    console.error("[Admin Dashboard] single registration read failed:", error);
+    showError("Could not load registration.");
     return [];
   }
 }
