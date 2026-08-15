@@ -58,10 +58,11 @@ service cloud.firestore {
     // must manually change status to 'enabled' in Firebase before the account
     // can read registration data.
     // ------------------------------------------------------------------
-    match /admins/{uid} {
-      allow read: if request.auth != null && request.auth.uid == uid;
+    match /admins/{adminId} {
+      allow read: if request.auth != null
+        && (adminId == request.auth.uid || adminId == request.auth.token.email);
       allow create: if request.auth != null
-        && request.auth.uid == uid
+        && adminId == request.auth.uid
         && request.resource.data.keys().hasOnly(['email', 'role', 'status', 'createdAt'])
         && request.resource.data.email is string
         && request.resource.data.email == request.auth.token.email
@@ -184,7 +185,16 @@ function isValidSlotIncrement(before, after) {
 
 function isAdmin() {
   return request.auth != null
-    && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
-    && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.status == 'enabled'
-    && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == 'admin';
+    && (
+      (exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        && isEnabledAdmin(get(/databases/$(database)/documents/admins/$(request.auth.uid)).data))
+      ||
+      (exists(/databases/$(database)/documents/admins/$(request.auth.token.email))
+        && isEnabledAdmin(get(/databases/$(database)/documents/admins/$(request.auth.token.email)).data))
+    );
+}
+
+function isEnabledAdmin(data) {
+  return data.role == 'admin'
+    && (data.status == 'enabled' || data.enabled == true || data.active == true);
 }

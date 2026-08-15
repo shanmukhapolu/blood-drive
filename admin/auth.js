@@ -7,11 +7,21 @@ export const UNAUTHORIZED = "Your account is not authorized to access the admini
 
 export async function getAdminProfile(user) {
   if (!user?.uid) return null;
-  const snap = await getDoc(doc(db, "admins", user.uid));
-  if (!snap.exists()) return null;
-  const data = snap.data();
-  if (data.status !== "enabled" || data.role !== "admin") return null;
-  return data;
+
+  const candidateIds = [user.uid, user.email?.toLowerCase()].filter(Boolean);
+  for (const adminId of candidateIds) {
+    const snap = await getDoc(doc(db, "admins", adminId));
+    if (!snap.exists()) continue;
+
+    const data = snap.data();
+    if (isEnabledAdminProfile(data)) return data;
+  }
+
+  return null;
+}
+
+function isEnabledAdminProfile(data) {
+  return data?.role === "admin" && (data.status === "enabled" || data.enabled === true || data.active === true);
 }
 
 function finishAuthCheck() {
