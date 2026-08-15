@@ -106,6 +106,17 @@ function isLikelyValidEmail(value) {
  * Convenience-only check for a known school email domain. NOT a security
  * control; see SCHOOL_EMAIL_DOMAINS in config.js.
  */
+function formatPhoneNumber(value) {
+  const digits = String(value || "").replace(/\D/g, "").slice(0, 10);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+}
+
+function normalizePhoneInput(event) {
+  event.target.value = formatPhoneNumber(event.target.value);
+}
+
 function isSchoolDomainEmail(value) {
   const at = value.lastIndexOf("@");
   if (at === -1) return false;
@@ -298,7 +309,7 @@ export function validateForm(formEl, currentSelectedSlotId) {
   const lastName = formEl.lastName.value.trim();
   const studentEmail = formEl.studentEmail.value.trim();
   const parentEmail = formEl.parentEmail.value.trim();
-  const phone = formEl.phone.value.trim();
+  const phone = formatPhoneNumber(formEl.phone.value);
   const dob = formEl.dob.value;
   const studentId = formEl.studentId.value.trim();
   const nhsSenior = formEl.nhsSenior.checked;
@@ -333,9 +344,11 @@ export function validateForm(formEl, currentSelectedSlotId) {
     valid = false;
   }
 
-  if (!phone || phone.replace(/\D/g, "").length < 10) {
+  if (!phone || phone.replace(/\D/g, "").length !== 10) {
     setError("phone", "Enter a valid 10-digit phone number.");
     valid = false;
+  } else {
+    formEl.phone.value = phone;
   }
 
   const eligibility = validateEligibility(dob);
@@ -605,6 +618,7 @@ function init() {
   renderSenatorOptions();
   renderAppointmentSlots();
 
+  document.getElementById("phone").addEventListener("input", normalizePhoneInput);
   document.getElementById("dob").addEventListener("change", updateEligibilityUI);
   form.addEventListener("submit", submitRegistration);
   document.getElementById("print-btn").addEventListener("click", () => window.print());

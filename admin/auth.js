@@ -14,6 +14,11 @@ export async function getAdminProfile(user) {
   return data;
 }
 
+function finishAuthCheck() {
+  document.body.classList.remove("admin-auth-checking");
+  document.body.classList.add("admin-auth-ready");
+}
+
 export function requireAdmin({ onReady, onDenied }) {
   return onAuthStateChanged(auth, async (user) => {
     if (!user) {
@@ -23,11 +28,14 @@ export function requireAdmin({ onReady, onDenied }) {
     try {
       const profile = await getAdminProfile(user);
       if (!profile) {
+        finishAuthCheck();
         onDenied?.(UNAUTHORIZED);
         return;
       }
+      finishAuthCheck();
       onReady(user, profile);
     } catch (_error) {
+      finishAuthCheck();
       onDenied?.("Admin authorization could not be verified. Please try again later.");
     }
   });

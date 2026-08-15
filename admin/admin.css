@@ -198,6 +198,28 @@ button:disabled {
   min-height: 100vh;
 }
 
+body.admin-auth-checking::before {
+  content: "Checking admin access…";
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at top left, rgba(14, 96, 171, 0.12), transparent 32rem),
+    var(--admin-bg);
+  color: var(--admin-blue-deep);
+  font-family: var(--admin-display);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+body.admin-auth-checking > header,
+body.admin-auth-checking > main,
+body.admin-auth-checking .shell {
+  visibility: hidden;
+}
+
 .topbar {
   position: sticky;
   top: 0;
