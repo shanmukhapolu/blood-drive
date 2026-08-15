@@ -1,7 +1,14 @@
 import { CONFIG, SENATORS, TIME_SLOTS } from "../config.js";
 import { db } from "../firebase-init.js";
 import { requireAdmin, logout } from "./auth.js";
-import { collection, getDocs, orderBy, query } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
+import {
+  collection,
+  getDocs,
+  getDoc,
+  doc,
+  orderBy,
+  query
+} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
 
 const REGISTRATIONS_COLLECTION = "registrations";
 const $ = (id) => document.getElementById(id);
