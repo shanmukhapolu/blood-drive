@@ -54,7 +54,7 @@ Files:
 | `firebase-init.js` | Firebase app/auth/analytics initialization only; no UI logic. |
 | `app.js` | Form rendering, validation, eligibility logic, and submission. |
 | `firestore.rules` | Authoritative server-side access control (see Section 5). |
-| `firestore.indexes.json` | Intentionally empty; see Section 9. |
+| `firestore.indexes.json` | Firestore index configuration; simple admin reads use the single-field `createdAt` index. |
 | `firebase.json` | Firebase Hosting, Firestore, and Functions deployment configuration. |
 | `functions/` | Firebase Cloud Function that reopens a slot when its registration is deleted. |
 | `assets/parent-consent-placeholder.txt` | Placeholder only; **not** an official consent form. |
@@ -127,11 +127,9 @@ Non-PII capacity counters, optionally pre-seeded by an administrator or initiali
   counter so that the appointment spot reopens.
 - **Default deny everything else**: `match /{document=**} { allow read,
   write: if false; }`.
-- **No admin dashboard exists in this codebase.** There is no `/admin`
-  route, no admin UI, and no rule that grants any authenticated user broad
-  read access (any broad read rule on
-  `registrations` would let visitors read student data; this repository
-  deliberately does not do that).
+- **Simple admin dashboard.** The `/admin` pages use Firebase Auth and read
+  `registrations` directly from Firestore after an admin profile with
+  `role: "admin"` and `status: "enabled"` is found.
 
 ## 6. FERPA / Privacy Limitations
 
@@ -178,12 +176,10 @@ pnpm install
 pnpm dev
 ```
 
-This serves the static files with `http-server` (no build step). Because
-the client never queries `registrations` and only fetches `slotCounts` by
-direct document ID, **no composite indexes are required**;
-`firestore.indexes.json` is intentionally empty. If a future change adds a
-query (e.g. an approved admin export), document why each new index exists
-in this file's comments before adding it.
+This serves the static files with `http-server` (no build step). The student-facing client only reads `slotCounts`; the admin dashboard reads
+`registrations` ordered by `createdAt`. This uses Firestore's normal
+single-field index, so no composite index is required for the simple admin
+view.
 
 To test the full flow, open the page, fill out the form with **fictional data only**, and submit. Then delete that test registration from Firestore and confirm the matching `slotCounts` document decrements by 1 after the deployed `releaseSlotOnRegistrationDelete` function runs.
 
@@ -226,18 +222,30 @@ Before production use, the district must decide and document:
 
 ## 12. Admin Access Considerations
 
-This MVP intentionally ships **no admin dashboard or `/admin` route**. If
-one is built in the future, it must, at minimum:
+The `/admin` route is intentionally simple. It signs in with Firebase Auth,
+looks for an enabled admin profile, then pulls registration documents from
+Firestore.
 
-- Use district-approved authentication.
-- Use role-based access with least-privilege custom claims.
-- Never grant blanket `allow read: if request.auth != null;` on
-  `registrations`; that would let every authenticated user (including
-  every student, if students ever get accounts) read every other student's
-  record.
-- Log administrative access (audit logging) without logging student PII in
-  those logs any more than necessary.
-- Never be reachable by public traffic.
+Admin access works when either of these documents exists:
+
+- `admins/{firebaseAuthUid}`
+- `admins/{exact-admin-email}`
+
+The document must contain:
+
+```json
+{ "role": "admin", "status": "enabled" }
+```
+
+Self-service signup creates `admins/{firebaseAuthUid}` with
+`status: "disabled"`. To enable the account, change that field to
+`"enabled"` in Firebase Console and deploy the latest Firestore rules. The
+simple dashboard pages are:
+
+- `/admin/login.html`
+- `/admin/`
+- `/admin/registrations.html`
+- `/admin/statistics.html`
 
 ## 13. Future Google Sheets Integration
 

@@ -1,0 +1,42 @@
+import { auth } from "./auth.js";
+import { db } from "../firebase-init.js";
+import { createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js";
+import { doc, serverTimestamp, setDoc } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
+
+const form = document.getElementById("signup-form");
+const errorEl = document.getElementById("error");
+const submit = document.getElementById("submit");
+
+function show(message = "") {
+  errorEl.textContent = message;
+}
+
+function setBusy(isBusy) {
+  submit.disabled = isBusy;
+  submit.textContent = isBusy ? "Creating…" : "Create Account";
+}
+
+form.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  show();
+  setBusy(true);
+
+  try {
+    const email = form.email.value.trim().toLowerCase();
+    const credential = await createUserWithEmailAndPassword(auth, email, form.password.value);
+
+    await setDoc(doc(db, "admins", credential.user.uid), {
+      email,
+      role: "admin",
+      status: "disabled",
+      createdAt: serverTimestamp(),
+    });
+
+    show("Account created. Change this admin record status to enabled in Firebase to allow dashboard access.");
+  } catch (error) {
+    console.info("[Admin Signup] setup failed", { code: error?.code || "unknown" });
+    show("Account setup failed. Make sure the email and password are valid.");
+  } finally {
+    setBusy(false);
+  }
+});

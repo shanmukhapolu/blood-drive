@@ -4,7 +4,8 @@ rules_version = '2';
 // Firestore Security Rules: Carmel HS Blood Drive (MVP)
 //
 // THREAT MODEL / GOALS
-//   - No public client may ever read a "registrations" document.
+//   - No public client may ever read a "registrations" document; only authenticated
+//     enabled admins may read registrations directly through Firestore rules.
 //   - No client may ever update or delete a "registrations" document.
 //   - A public client may create a "registrations" document ONLY if it exactly
 //     matches the expected, narrowly-validated schema for the current
@@ -31,7 +32,7 @@ service cloud.firestore {
     // registrations
     // ------------------------------------------------------------------
     match /registrations/{registrationId} {
-      allow read: if false;
+      allow read: if isAdmin();
       allow update: if false;
       allow delete: if false;
 
@@ -49,6 +50,28 @@ service cloud.firestore {
       allow delete: if false;
 
       allow update: if isValidSlotIncrement(resource.data, request.resource.data);
+    }
+
+
+    // ------------------------------------------------------------------
+    // admins: self-service signup may create only the signed-in user's own
+    // admin profile, and it must start with status 'disabled'. An organizer
+    // must manually change status to 'enabled' in Firebase before the account
+    // can read registration data.
+    // ------------------------------------------------------------------
+    match /admins/{adminId} {
+      // Simple admin model: signed-in users may read admin profile records so
+      // the dashboard can find a matching enabled admin by UID or email.
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && adminId == request.auth.uid
+        && request.resource.data.keys().hasOnly(['email', 'role', 'status', 'createdAt'])
+        && request.resource.data.email is string
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.role == 'admin'
+        && request.resource.data.status == 'disabled'
+        && request.resource.data.createdAt == request.time;
+      allow update, delete: if false;
     }
 
     // ------------------------------------------------------------------
@@ -160,4 +183,20 @@ function isValidSlotIncrement(before, after) {
     // Every other field on the document (bloodDriveId, slotId, label, ...)
     // must remain unchanged by a client update.
     && after.diff(before).affectedKeys().hasOnly(['count']);
+}
+
+function isAdmin() {
+  return request.auth != null
+    && (
+      (exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        && isEnabledAdmin(get(/databases/$(database)/documents/admins/$(request.auth.uid)).data))
+      ||
+      (request.auth.token.email is string
+        && exists(/databases/$(database)/documents/admins/$(request.auth.token.email))
+        && isEnabledAdmin(get(/databases/$(database)/documents/admins/$(request.auth.token.email)).data))
+    );
+}
+
+function isEnabledAdmin(data) {
+  return data.role == 'admin' && data.status == 'enabled';
 }

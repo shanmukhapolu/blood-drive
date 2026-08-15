@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Registrations | Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body class="admin-auth-checking">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div>
+        <div class="brand-title">Carmel High School Blood Drive</div>
+        <div id="drive-meta" class="brand-sub"></div>
+      </div>
+      <div class="admin-meta">
+        <span id="admin-email"></span>
+        <button id="logout" class="secondary">Logout</button>
+      </div>
+    </div>
+  </header>
+  <main class="layout">
+    <nav class="nav">
+      <a class="active" href="registrations.html">Registrations</a>
+      <a href="statistics.html">Statistics</a>
+    </nav>
+    <section class="panel">
+      <div class="summary-line">
+        <div>
+          <p class="eyebrow">Firebase registrations</p>
+          <h1>Registrations</h1>
+          <p class="muted">Simple read-only view of the registration documents in Firestore. Click a row for the raw document.</p>
+        </div>
+        <button id="refresh" class="primary" type="button">Refresh</button>
+      </div>
+      <div class="toolbar simple-toolbar">
+        <div>
+          <label for="search">Search</label>
+          <input id="search" placeholder="Name, email, student ID, confirmation ID">
+        </div>
+        <div>
+          <label for="filter-slot">Appointment</label>
+          <select id="filter-slot"><option value="">All appointments</option></select>
+        </div>
+        <div>
+          <label for="filter-senator">Senator</label>
+          <select id="filter-senator"><option value="">All senators</option></select>
+        </div>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="summary-line">
+        <strong id="counts">Loading registrations…</strong>
+        <span class="muted">Data is pulled directly from Firebase.</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Confirmation ID</th>
+              <th>Submitted</th>
+              <th>First</th>
+              <th>Last</th>
+              <th>Student Email</th>
+              <th>Parent Email</th>
+              <th>Phone</th>
+              <th>Appointment</th>
+              <th>Senators</th>
+              <th>Consent</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <p id="error" class="error"></p>
+    </section>
+    <div id="modal-root"></div>
+  </main>
+  <script type="module" src="admin.js"></script>
+</body>
+</html>
