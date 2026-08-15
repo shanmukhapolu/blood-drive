@@ -1,23 +1,560 @@
 import { CONFIG, TIME_SLOTS } from "../config.js";
 import { db } from "../firebase-init.js";
 import { requireAdmin, logout } from "./auth.js";
-import { collection, getCountFromServer, getDocs, limit, query } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
-const $=id=>document.getElementById(id);const fmtDate=v=>{const d=toDate(v);return d?d.toLocaleString("en-US",{dateStyle:"medium",timeStyle:"short"}):"—"};const toDate=v=>v?.toDate?v.toDate():(typeof v==="string"?new Date(v):null);const title=s=>(s||"").replace(/[-_]+/g," ").replace(/\b\w/g,c=>c.toUpperCase());const slotLabel=id=>TIME_SLOTS.find(s=>s.id===id)?.label||id||"—";const yn=v=>v===true?"Yes":v===false?"No":"—";const emailStatus=r=>r.confirmationEmailSent||r.confirmationSent||r.confirmationEmailStatus==="sent";const consentStatus=r=>r.consentEmailSent||r.consentSent||r.consentEmailStatus==="sent";let regs=[],filtered=[],page=1,sortKey="createdAt",sortDir="desc";const pageSize=25;
-function initShell(user){$("admin-email")&&($("admin-email").textContent=user.email);$("drive-meta")&&($("drive-meta").textContent=`${CONFIG.eventName} • ${new Date(CONFIG.bloodDriveDate+"T00:00:00").toLocaleDateString("en-US",{dateStyle:"long"})} • ${CONFIG.location}`);$("logout")?.addEventListener("click",logout)}
-requireAdmin({onReady:(user)=>{initShell(user);const path=location.pathname;if(path.endsWith("registrations.html")) initRegistrations(); else if(path.endsWith("statistics.html")) initStats();},onDenied:(m)=>{$("error")&&($("error").textContent=m)}});
-async function baseQuery(max=500){return query(collection(db,"registrations"),limit(max))}
-function isCurrentDriveRecord(record){return !record.bloodDriveId || record.bloodDriveId===CONFIG.bloodDriveId}
-async function loadRegistrations(max=500){const snap=await getDocs(await baseQuery(max));return snap.docs.map(d=>({id:d.id,...d.data()})).filter(isCurrentDriveRecord)}
-async function initRegistrations(){fillFilters(); try{const countSnap=await getCountFromServer(collection(db,"registrations"));regs=await loadRegistrations();window.totalOverall=countSnap.data().count;renderHead();bindFilters();applyFilters()}catch(_e){$("counts").textContent="Unable to load registrations";$("rows").innerHTML="<tr><td>Registrations could not be loaded. Confirm admin access is enabled in Firebase and Firestore rules are deployed.</td></tr>";$("error").textContent="Registrations could not be loaded. Confirm admin access is enabled in Firebase and Firestore rules are deployed."}}
-function fillFilters(){TIME_SLOTS.forEach(s=>$("filter-slot").append(new Option(s.label,s.id)));["alex-patel","daniel-kim","maya-shah","priya-desai","sarah-chen"].forEach(id=>$("filter-senator").append(new Option(title(id),id)))}
-const cols=[['id','Confirmation ID'],['createdAt','Date Submitted'],['firstName','First Name'],['lastName','Last Name'],['parentEmail','Parent Email'],['studentEmail','Personal Student Email'],['phone','Phone'],['dob','Birthdate'],['studentId','Student ID'],['nhsSeniorMember','NHS?'],['senatorIds','Senator(s) Who Assisted'],['appointmentSlotId','Appointment Time'],['ageOnDriveDate','Age on Drive Date'],['confirmation','Confirmation Email Sent'],['consent','Consent Email Sent'],['lastUpdated','Last Updated']];
-function renderHead(){const tr=$("head");tr.textContent="";cols.forEach(([k,l])=>{const th=document.createElement("th");th.textContent=l;th.onclick=()=>{sortKey=k;sortDir=sortDir==="asc"?"desc":"asc";applyFilters()};tr.append(th)})}
-function bindFilters(){["search","filter-slot","filter-age","filter-nhs","filter-senator","filter-confirmation","filter-consent"].forEach(id=>$(id).addEventListener("input",()=>{page=1;applyFilters()}));$("clear").onclick=()=>{["search","filter-slot","filter-age","filter-nhs","filter-senator","filter-confirmation","filter-consent"].forEach(id=>$(id).value="");page=1;applyFilters()};$("prev").onclick=()=>{page=Math.max(1,page-1);renderRows()};$("next").onclick=()=>{page++;renderRows()}}
-function applyFilters(){const q=$("search").value.trim().toLowerCase();filtered=regs.filter(r=>{const searchable=[r.id,r.firstName,r.lastName,r.studentEmail,r.parentEmail,r.studentId].join(" ").toLowerCase();if(q&&!searchable.includes(q))return false;if($("filter-slot").value&&r.appointmentSlotId!==$("filter-slot").value)return false;const age=$("filter-age").value;if(age==="18+"&&Number(r.ageOnDriveDate)<18)return false;if(age&&age!=="18+"&&String(r.ageOnDriveDate)!==age)return false;if($("filter-nhs").value&&String(r.nhsSeniorMember)!==$("filter-nhs").value)return false;if($("filter-senator").value&&!(r.senatorIds||[]).includes($("filter-senator").value))return false;if($("filter-confirmation").value&&($("filter-confirmation").value==="sent")!==emailStatus(r))return false;if($("filter-consent").value){const v=$("filter-consent").value;if(v==="sent"&&!consentStatus(r))return false;if(v==="required"&&r.parentConsentStatus!=="required")return false;if(v==="not_required"&&r.parentConsentStatus!=="not_required")return false}return true});filtered.sort((a,b)=>compare(val(a,sortKey),val(b,sortKey))*(sortDir==="asc"?1:-1));renderRows()}
-function val(r,k){if(k==="confirmation")return emailStatus(r);if(k==="consent")return consentStatus(r);if(k==="lastUpdated")return r.lastUpdated||r.updateTime||r.updatedAt;return r[k]}function compare(a,b){const da=toDate(a),db=toDate(b);if(da&&db)return da-db;return String(a??"").localeCompare(String(b??""),undefined,{numeric:true})}
-function renderRows(){const start=(page-1)*pageSize,chunk=filtered.slice(start,start+pageSize);$("rows").textContent="";chunk.forEach(r=>{const tr=document.createElement("tr");tr.onclick=()=>showDetail(r);cols.forEach(([k])=>{const td=document.createElement("td");td.textContent=display(r,k);tr.append(td)});$("rows").append(tr)});$("counts").textContent=`${filtered.length} matching • ${window.totalOverall??regs.length} total registrations`;$("page").textContent=`Page ${page} of ${Math.max(1,Math.ceil(filtered.length/pageSize))}`;$("prev").disabled=page<=1;$("next").disabled=start+pageSize>=filtered.length;if(!chunk.length){const tr=document.createElement("tr"),td=document.createElement("td");td.colSpan=cols.length;td.textContent="No registrations match the current filters.";tr.append(td);$("rows").append(tr)}}
-function display(r,k){if(k==="id")return r.id;if(k==="createdAt")return fmtDate(r.createdAt);if(k==="lastUpdated")return fmtDate(r.lastUpdated||r.updateTime||r.updatedAt);if(k==="senatorIds")return (r.senatorIds||[]).map(title).join(", ")||"—";if(k==="appointmentSlotId")return slotLabel(r.appointmentSlotId);if(k==="nhsSeniorMember")return yn(r.nhsSeniorMember);if(k==="confirmation")return emailStatus(r)?"Yes":"No";if(k==="consent")return consentStatus(r)?"Yes":(r.parentConsentStatus==="required"?"Required":"Not required");return r[k]??"—"}
-function showDetail(r){const root=$("modal-root");root.innerHTML=`<div class="modal"><div class="modal-card"><div class="summary-line"><h2>Registration Detail</h2><button id="close-modal" class="secondary">Close</button></div><div class="detail-grid"></div></div></div>`;const grid=root.querySelector(".detail-grid");cols.concat([['bloodDriveId','Blood Drive ID'],['bloodDriveDate','Blood Drive Date'],['location','Location'],['parentConsentStatus','Parent Consent Status'],['eligibilityAgeConfirmed','Age Confirmed'],['eligibilityNoFallSportConfirmed','No Fall Sport Confirmed']]).forEach(([k,l])=>{const d=document.createElement("div");d.className="detail-item";d.innerHTML=`<div class="detail-label"></div><div class="detail-value"></div>`;d.children[0].textContent=l;d.children[1].textContent=display(r,k);grid.append(d)});$("close-modal").onclick=()=>root.textContent=""}
-async function initStats(){try{regs=await loadRegistrations(2000);renderStats(regs)}catch(_e){$("stats").innerHTML="<section class=\"panel\"><p>Statistics could not be loaded. Confirm admin access is enabled in Firebase and Firestore rules are deployed.</p></section>";$("error").textContent="Statistics could not be loaded. Large deployments should move these calculations to server-side aggregate documents."}}
-function renderStats(data){const today=new Date(),weekAgo=new Date(today);weekAgo.setDate(today.getDate()-7);const slotCounts=Object.fromEntries(TIME_SLOTS.map(s=>[s.id,0]));const byDate={},byHour={},sen={},ages={16:0,17:0,"18+":0};let consent=0,last24=0,last7=0;data.forEach(r=>{const d=toDate(r.createdAt);if(d){const key=d.toLocaleDateString("en-US",{month:"short",day:"numeric"});byDate[key]=(byDate[key]||0)+1;byHour[d.getHours()]=(byHour[d.getHours()]||0)+1;if(today-d<864e5)last24++;if(d>=weekAgo)last7++} if(slotCounts[r.appointmentSlotId]!=null)slotCounts[r.appointmentSlotId]++;(r.senatorIds||[]).forEach(id=>sen[id]=(sen[id]||0)+1);const a=Number(r.ageOnDriveDate);if(a===16){ages[16]++;consent++}else if(a===17)ages[17]++;else if(a>=18)ages["18+"]++});const total=data.length,capacity=TIME_SLOTS.reduce((s,x)=>s+x.capacity,0),remaining=Math.max(0,capacity-total);const cards=[['Total registrations',total],['Today',countSince(data,0)],['This week',last7],['Remaining appointments',remaining],['16-year-olds',ages[16]],['Students 17+',ages[17]+ages['18+']],['Requiring parent consent',consent],['Last 24 hours',last24]];const stats=$("stats");stats.textContent="";const grid=el('div','grid');cards.forEach(c=>{const card=el('div','stat-card');card.append(el('div','muted',c[0]),el('div','stat-value',String(c[1])));grid.append(card)});stats.append(grid,chartPanel('Registrations over time',byDate),listPanel('Appointment analytics',appointmentRows(slotCounts,total,capacity)),listPanel('Senate leaderboard',leaderRows(sen,total)),listPanel('Age distribution',[`16 — ${ages[16]}`,`17 — ${ages[17]}`,`18+ — ${ages['18+']}`]),listPanel('Additional metrics',[`Average registrations/day — ${avg(byDate)}`,`Highest-registration day — ${highest(byDate)}`,`Registration growth — ${total}`,`Most popular appointment period — ${popularSlot(slotCounts)}`,`Appointments filled — ${Math.round((total/capacity)*100)}%`, `Needs attention — ${data.filter(r=>r.parentConsentStatus==='required'&&!consentStatus(r)).length} consent emails pending`]))}
-function countSince(data,days){const start=new Date();start.setHours(0,0,0,0);start.setDate(start.getDate()-days);return data.filter(r=>{const d=toDate(r.createdAt);return d&&d>=start}).length}function avg(o){const v=Object.values(o);return v.length?(v.reduce((a,b)=>a+b,0)/v.length).toFixed(1):'0'}function highest(o){return Object.entries(o).sort((a,b)=>b[1]-a[1])[0]?.join(' — ')||'—'}function popularSlot(o){const e=Object.entries(o).sort((a,b)=>b[1]-a[1])[0];return e?`${slotLabel(e[0])} (${e[1]})`:'—'}function appointmentRows(o){return TIME_SLOTS.map(s=>`${s.label} — ${o[s.id]||0}/${s.capacity}`)}function leaderRows(o,total){return Object.entries(o).sort((a,b)=>b[1]-a[1]).map(([id,n],i)=>`${i+1}. ${title(id)} — ${n} (${total?Math.round(n/total*100):0}%)`)}function chartPanel(t,o){const p=el('section','panel');p.append(el('h2','',t));const c=el('div','chart');const max=Math.max(1,...Object.values(o));Object.entries(o).forEach(([k,v])=>{const b=el('div','bar');b.style.height=`${Math.max(6,v/max*190)}px`;b.title=`${k}: ${v}`;b.append(el('span','',k));c.append(b)});p.append(c,el('p','muted',`Total registrations: ${Object.values(o).reduce((a,b)=>a+b,0)} • Average/day: ${avg(o)} • Highest day: ${highest(o)}`));return p}function listPanel(t,rows){const p=el('section','panel');p.append(el('h2','',t));const l=el('div','list');rows.forEach(r=>l.append(el('div','list-row',r)));p.append(l);return p}function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e}
+import { collection, onSnapshot } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
+
+const PAGE_SIZE = 25;
+const DEFAULT_SORT_KEY = "createdAt";
+const REGISTRATIONS_COLLECTION = "registrations";
+
+const $ = (id) => document.getElementById(id);
+
+let registrations = [];
+let filteredRegistrations = [];
+let page = 1;
+let sortKey = DEFAULT_SORT_KEY;
+let sortDir = "desc";
+let unsubscribeRegistrations = null;
+
+const columns = [
+  ["id", "Confirmation ID"],
+  ["createdAt", "Date Submitted"],
+  ["firstName", "First Name"],
+  ["lastName", "Last Name"],
+  ["parentEmail", "Parent Email"],
+  ["studentEmail", "Personal Student Email"],
+  ["phone", "Phone"],
+  ["dob", "Birthdate"],
+  ["studentId", "Student ID"],
+  ["nhsSeniorMember", "NHS?"],
+  ["senatorIds", "Senator(s) Who Assisted"],
+  ["appointmentSlotId", "Appointment Time"],
+  ["ageOnDriveDate", "Age on Drive Date"],
+  ["confirmation", "Confirmation Email Sent"],
+  ["consent", "Consent Email Sent"],
+  ["lastUpdated", "Last Updated"],
+];
+
+requireAdmin({
+  onReady: (user) => {
+    initShell(user);
+
+    if (isRegistrationsPage()) {
+      initRegistrationsPage();
+      return;
+    }
+
+    if (isStatisticsPage()) {
+      initStatisticsPage();
+      return;
+    }
+  },
+  onDenied: (message) => {
+    if ($("error")) $("error").textContent = message;
+  },
+});
+
+function isRegistrationsPage() {
+  return location.pathname.includes("registrations");
+}
+
+function isStatisticsPage() {
+  return location.pathname.includes("statistics");
+}
+
+function initShell(user) {
+  if ($("admin-email")) $("admin-email").textContent = user.email || "Admin";
+  if ($("drive-meta")) {
+    $("drive-meta").textContent = `${CONFIG.eventName} • ${formatDriveDate(CONFIG.bloodDriveDate)} • ${CONFIG.location}`;
+  }
+  $("logout")?.addEventListener("click", logout);
+}
+
+function initRegistrationsPage() {
+  fillFilterOptions();
+  renderTableHead();
+  bindRegistrationControls();
+  setRegistrationLoadingState();
+  watchRegistrations((records) => {
+    registrations = records;
+    page = 1;
+    applyFilters();
+  });
+}
+
+function initStatisticsPage() {
+  setStatsLoadingState();
+  watchRegistrations((records) => {
+    registrations = records;
+    renderStats(registrations);
+  });
+}
+
+function watchRegistrations(onRecords) {
+  if (unsubscribeRegistrations) unsubscribeRegistrations();
+
+  unsubscribeRegistrations = onSnapshot(
+    collection(db, REGISTRATIONS_COLLECTION),
+    (snapshot) => {
+      const records = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+      onRecords(records);
+    },
+    (error) => {
+      showLoadError(error);
+    }
+  );
+}
+
+function showLoadError(error) {
+  const code = error?.code || "unknown";
+  const message =
+    code === "permission-denied"
+      ? "Firestore denied access. Make sure your Firebase Auth user has an admins record with status enabled and role admin, and deploy the latest rules."
+      : "Unable to load registration data directly from Firestore. Please refresh or check Firebase configuration.";
+
+  if ($("counts")) $("counts").textContent = "Unable to load registrations";
+  if ($("rows")) {
+    $("rows").textContent = "";
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = columns.length;
+    cell.textContent = message;
+    row.appendChild(cell);
+    $("rows").appendChild(row);
+  }
+  if ($("stats")) {
+    $("stats").textContent = "";
+    const panel = el("section", "panel");
+    panel.appendChild(el("p", "", message));
+    $("stats").appendChild(panel);
+  }
+  if ($("error")) $("error").textContent = message;
+}
+
+function setRegistrationLoadingState() {
+  if ($("counts")) $("counts").textContent = "Loading registrations from Firestore…";
+  if ($("rows")) {
+    $("rows").textContent = "";
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = columns.length;
+    cell.textContent = "Loading registrations from Firestore…";
+    row.appendChild(cell);
+    $("rows").appendChild(row);
+  }
+}
+
+function setStatsLoadingState() {
+  if ($("stats")) {
+    $("stats").textContent = "";
+    const panel = el("section", "panel");
+    panel.appendChild(el("p", "", "Loading statistics from Firestore…"));
+    $("stats").appendChild(panel);
+  }
+}
+
+function fillFilterOptions() {
+  TIME_SLOTS.forEach((slot) => $("filter-slot")?.append(new Option(slot.label, slot.id)));
+  getKnownSenatorIds().forEach((id) => $("filter-senator")?.append(new Option(titleCase(id), id)));
+}
+
+function getKnownSenatorIds() {
+  return ["alex-patel", "daniel-kim", "maya-shah", "priya-desai", "sarah-chen"];
+}
+
+function renderTableHead() {
+  const head = $("head");
+  if (!head) return;
+  head.textContent = "";
+
+  columns.forEach(([key, label]) => {
+    const th = document.createElement("th");
+    th.textContent = label;
+    th.addEventListener("click", () => {
+      if (sortKey === key) sortDir = sortDir === "asc" ? "desc" : "asc";
+      else {
+        sortKey = key;
+        sortDir = key === DEFAULT_SORT_KEY ? "desc" : "asc";
+      }
+      applyFilters();
+    });
+    head.appendChild(th);
+  });
+}
+
+function bindRegistrationControls() {
+  ["search", "filter-slot", "filter-age", "filter-nhs", "filter-senator", "filter-confirmation", "filter-consent"].forEach(
+    (id) => $(id)?.addEventListener("input", () => {
+      page = 1;
+      applyFilters();
+    })
+  );
+
+  $("clear")?.addEventListener("click", () => {
+    ["search", "filter-slot", "filter-age", "filter-nhs", "filter-senator", "filter-confirmation", "filter-consent"].forEach(
+      (id) => {
+        if ($(id)) $(id).value = "";
+      }
+    );
+    page = 1;
+    applyFilters();
+  });
+
+  $("prev")?.addEventListener("click", () => {
+    page = Math.max(1, page - 1);
+    renderRows();
+  });
+
+  $("next")?.addEventListener("click", () => {
+    page += 1;
+    renderRows();
+  });
+}
+
+function applyFilters() {
+  const search = ($("search")?.value || "").trim().toLowerCase();
+
+  filteredRegistrations = registrations.filter((record) => {
+    const searchableText = [
+      record.id,
+      record.firstName,
+      record.lastName,
+      record.studentEmail,
+      record.parentEmail,
+      record.studentId,
+    ]
+      .join(" ")
+      .toLowerCase();
+
+    if (search && !searchableText.includes(search)) return false;
+    if ($("filter-slot")?.value && record.appointmentSlotId !== $("filter-slot").value) return false;
+
+    const ageFilter = $("filter-age")?.value;
+    const age = Number(record.ageOnDriveDate);
+    if (ageFilter === "18+" && age < 18) return false;
+    if (ageFilter && ageFilter !== "18+" && String(record.ageOnDriveDate) !== ageFilter) return false;
+
+    if ($("filter-nhs")?.value && String(record.nhsSeniorMember) !== $("filter-nhs").value) return false;
+    if ($("filter-senator")?.value && !(record.senatorIds || []).includes($("filter-senator").value)) return false;
+    if ($("filter-confirmation")?.value && ($("filter-confirmation").value === "sent") !== confirmationEmailSent(record)) {
+      return false;
+    }
+
+    const consentFilter = $("filter-consent")?.value;
+    if (consentFilter === "sent" && !consentEmailSent(record)) return false;
+    if (consentFilter === "required" && record.parentConsentStatus !== "required") return false;
+    if (consentFilter === "not_required" && record.parentConsentStatus !== "not_required") return false;
+
+    return true;
+  });
+
+  filteredRegistrations.sort((a, b) => compareValues(getSortValue(a, sortKey), getSortValue(b, sortKey)) * (sortDir === "asc" ? 1 : -1));
+  renderRows();
+}
+
+function renderRows() {
+  const rows = $("rows");
+  if (!rows) return;
+
+  const totalPages = Math.max(1, Math.ceil(filteredRegistrations.length / PAGE_SIZE));
+  if (page > totalPages) page = totalPages;
+
+  const start = (page - 1) * PAGE_SIZE;
+  const currentPageRecords = filteredRegistrations.slice(start, start + PAGE_SIZE);
+
+  rows.textContent = "";
+
+  if (currentPageRecords.length === 0) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = columns.length;
+    cell.textContent = registrations.length === 0 ? "No registration records found in Firestore." : "No registrations match the current filters.";
+    row.appendChild(cell);
+    rows.appendChild(row);
+  } else {
+    currentPageRecords.forEach((record) => {
+      const row = document.createElement("tr");
+      row.addEventListener("click", () => showDetail(record));
+      columns.forEach(([key]) => {
+        const cell = document.createElement("td");
+        cell.textContent = displayValue(record, key);
+        row.appendChild(cell);
+      });
+      rows.appendChild(row);
+    });
+  }
+
+  if ($("counts")) $("counts").textContent = `${filteredRegistrations.length} matching • ${registrations.length} total registrations`;
+  if ($("page")) $("page").textContent = `Page ${page} of ${totalPages}`;
+  if ($("prev")) $("prev").disabled = page <= 1;
+  if ($("next")) $("next").disabled = page >= totalPages;
+}
+
+function showDetail(record) {
+  const root = $("modal-root");
+  if (!root) return;
+
+  root.textContent = "";
+
+  const modal = el("div", "modal");
+  const card = el("div", "modal-card");
+  const header = el("div", "summary-line");
+  const title = el("h2", "", "Registration Detail");
+  const close = el("button", "secondary", "Close");
+  close.type = "button";
+  close.addEventListener("click", () => {
+    root.textContent = "";
+  });
+
+  const grid = el("div", "detail-grid");
+  const detailFields = columns.concat([
+    ["bloodDriveId", "Blood Drive ID"],
+    ["bloodDriveDate", "Blood Drive Date"],
+    ["location", "Location"],
+    ["parentConsentStatus", "Parent Consent Status"],
+    ["eligibilityAgeConfirmed", "Age Confirmed"],
+    ["eligibilityNoFallSportConfirmed", "No Fall Sport Confirmed"],
+  ]);
+
+  detailFields.forEach(([key, label]) => {
+    const item = el("div", "detail-item");
+    item.appendChild(el("div", "detail-label", label));
+    item.appendChild(el("div", "detail-value", displayValue(record, key)));
+    grid.appendChild(item);
+  });
+
+  header.append(title, close);
+  card.append(header, grid);
+  modal.appendChild(card);
+  root.appendChild(modal);
+}
+
+function renderStats(records) {
+  const stats = $("stats");
+  if (!stats) return;
+
+  const now = new Date();
+  const sevenDaysAgo = new Date(now);
+  sevenDaysAgo.setDate(now.getDate() - 7);
+
+  const slotCounts = Object.fromEntries(TIME_SLOTS.map((slot) => [slot.id, 0]));
+  const byDate = {};
+  const senatorCounts = {};
+  const ages = { 16: 0, 17: 0, "18+": 0 };
+  let last24Hours = 0;
+  let last7Days = 0;
+  let requiringConsent = 0;
+
+  records.forEach((record) => {
+    const createdAt = toDate(record.createdAt);
+    if (createdAt) {
+      const dayKey = createdAt.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      byDate[dayKey] = (byDate[dayKey] || 0) + 1;
+      if (now - createdAt < 86_400_000) last24Hours += 1;
+      if (createdAt >= sevenDaysAgo) last7Days += 1;
+    }
+
+    if (slotCounts[record.appointmentSlotId] != null) slotCounts[record.appointmentSlotId] += 1;
+    (record.senatorIds || []).forEach((id) => {
+      senatorCounts[id] = (senatorCounts[id] || 0) + 1;
+    });
+
+    const age = Number(record.ageOnDriveDate);
+    if (age === 16) {
+      ages[16] += 1;
+      requiringConsent += 1;
+    } else if (age === 17) ages[17] += 1;
+    else if (age >= 18) ages["18+"] += 1;
+  });
+
+  const total = records.length;
+  const capacity = TIME_SLOTS.reduce((sum, slot) => sum + slot.capacity, 0);
+  const remaining = Math.max(0, capacity - total);
+
+  const cards = [
+    ["Total registrations", total],
+    ["Today", countToday(records)],
+    ["This week", last7Days],
+    ["Remaining appointments", remaining],
+    ["16-year-olds", ages[16]],
+    ["Students 17+", ages[17] + ages["18+"]],
+    ["Requiring parent consent", requiringConsent],
+    ["Last 24 hours", last24Hours],
+  ];
+
+  stats.textContent = "";
+
+  const grid = el("div", "grid");
+  cards.forEach(([label, value]) => {
+    const card = el("div", "stat-card");
+    card.append(el("div", "muted", label), el("div", "stat-value", String(value)));
+    grid.appendChild(card);
+  });
+
+  stats.append(
+    grid,
+    chartPanel("Registrations over time", byDate),
+    listPanel("Appointment analytics", appointmentRows(slotCounts)),
+    listPanel("Senate leaderboard", leaderRows(senatorCounts, total)),
+    listPanel("Age distribution", [`16 — ${ages[16]}`, `17 — ${ages[17]}`, `18+ — ${ages["18+"]}`]),
+    listPanel("Additional metrics", [
+      `Average registrations/day — ${average(byDate)}`,
+      `Highest-registration day — ${highest(byDate)}`,
+      `Registration growth — ${total}`,
+      `Most popular appointment period — ${popularSlot(slotCounts)}`,
+      `Appointments filled — ${capacity ? Math.round((total / capacity) * 100) : 0}%`,
+      `Needs attention — ${records.filter((record) => record.parentConsentStatus === "required" && !consentEmailSent(record)).length} consent emails pending`,
+    ])
+  );
+}
+
+function displayValue(record, key) {
+  if (key === "id") return record.id || "—";
+  if (key === "createdAt") return formatTimestamp(record.createdAt);
+  if (key === "lastUpdated") return formatTimestamp(record.lastUpdated || record.updateTime || record.updatedAt);
+  if (key === "senatorIds") return (record.senatorIds || []).map(titleCase).join(", ") || "—";
+  if (key === "appointmentSlotId") return slotLabel(record.appointmentSlotId);
+  if (key === "nhsSeniorMember") return yesNo(record.nhsSeniorMember);
+  if (key === "confirmation") return confirmationEmailSent(record) ? "Yes" : "No";
+  if (key === "consent") return consentEmailSent(record) ? "Yes" : record.parentConsentStatus === "required" ? "Required" : "Not required";
+  if (key === "eligibilityAgeConfirmed" || key === "eligibilityNoFallSportConfirmed") return yesNo(record[key]);
+  return record[key] ?? "—";
+}
+
+function getSortValue(record, key) {
+  if (key === "confirmation") return confirmationEmailSent(record);
+  if (key === "consent") return consentEmailSent(record);
+  if (key === "lastUpdated") return record.lastUpdated || record.updateTime || record.updatedAt;
+  return record[key];
+}
+
+function compareValues(a, b) {
+  const dateA = toDate(a);
+  const dateB = toDate(b);
+  if (dateA && dateB) return dateA - dateB;
+  return String(a ?? "").localeCompare(String(b ?? ""), undefined, { numeric: true });
+}
+
+function confirmationEmailSent(record) {
+  return record.confirmationEmailSent === true || record.confirmationSent === true || record.confirmationEmailStatus === "sent";
+}
+
+function consentEmailSent(record) {
+  return record.consentEmailSent === true || record.consentSent === true || record.consentEmailStatus === "sent";
+}
+
+function yesNo(value) {
+  if (value === true) return "Yes";
+  if (value === false) return "No";
+  return "—";
+}
+
+function titleCase(value) {
+  return String(value || "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function slotLabel(slotId) {
+  return TIME_SLOTS.find((slot) => slot.id === slotId)?.label || slotId || "—";
+}
+
+function toDate(value) {
+  if (value?.toDate) return value.toDate();
+  if (typeof value === "string" || typeof value === "number") {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  return null;
+}
+
+function formatTimestamp(value) {
+  const date = toDate(value);
+  return date ? date.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }) : "—";
+}
+
+function formatDriveDate(value) {
+  const date = new Date(`${value}T00:00:00`);
+  return date.toLocaleDateString("en-US", { dateStyle: "long" });
+}
+
+function countToday(records) {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  return records.filter((record) => {
+    const createdAt = toDate(record.createdAt);
+    return createdAt && createdAt >= start;
+  }).length;
+}
+
+function average(valuesByKey) {
+  const values = Object.values(valuesByKey);
+  return values.length ? (values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1) : "0";
+}
+
+function highest(valuesByKey) {
+  const highestEntry = Object.entries(valuesByKey).sort((a, b) => b[1] - a[1])[0];
+  return highestEntry ? `${highestEntry[0]} — ${highestEntry[1]}` : "—";
+}
+
+function popularSlot(slotCounts) {
+  const top = Object.entries(slotCounts).sort((a, b) => b[1] - a[1])[0];
+  return top ? `${slotLabel(top[0])} (${top[1]})` : "—";
+}
+
+function appointmentRows(slotCounts) {
+  return TIME_SLOTS.map((slot) => `${slot.label} — ${slotCounts[slot.id] || 0}/${slot.capacity}`);
+}
+
+function leaderRows(senatorCounts, total) {
+  const rows = Object.entries(senatorCounts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([id, count], index) => `${index + 1}. ${titleCase(id)} — ${count} (${total ? Math.round((count / total) * 100) : 0}%)`);
+  return rows.length ? rows : ["No senator attribution yet."];
+}
+
+function chartPanel(title, valuesByKey) {
+  const panel = el("section", "panel");
+  panel.appendChild(el("h2", "", title));
+
+  const chart = el("div", "chart");
+  const max = Math.max(1, ...Object.values(valuesByKey));
+
+  if (Object.keys(valuesByKey).length === 0) {
+    chart.appendChild(el("p", "muted", "No registration dates available yet."));
+  } else {
+    Object.entries(valuesByKey).forEach(([label, value]) => {
+      const bar = el("div", "bar");
+      bar.style.height = `${Math.max(6, (value / max) * 190)}px`;
+      bar.title = `${label}: ${value}`;
+      bar.appendChild(el("span", "", label));
+      chart.appendChild(bar);
+    });
+  }
+
+  panel.append(
+    chart,
+    el(
+      "p",
+      "muted",
+      `Total registrations: ${Object.values(valuesByKey).reduce((sum, value) => sum + value, 0)} • Average/day: ${average(valuesByKey)} • Highest day: ${highest(valuesByKey)}`
+    )
+  );
+  return panel;
+}
+
+function listPanel(title, rows) {
+  const panel = el("section", "panel");
+  panel.appendChild(el("h2", "", title));
+  const list = el("div", "list");
+  rows.forEach((row) => list.appendChild(el("div", "list-row", row)));
+  panel.appendChild(list);
+  return panel;
+}
+
+function el(tag, className = "", text = "") {
+  const element = document.createElement(tag);
+  if (className) element.className = className;
+  if (text) element.textContent = text;
+  return element;
+}
