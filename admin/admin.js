@@ -1,5 +1,5 @@
 import { CONFIG, TIME_SLOTS } from "../config.js";
-import { requireAdmin, logout } from "./auth.js";
+import { auth, requireAdmin, logout } from "./auth.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-functions.js";
 
 const PAGE_SIZE = 25;
@@ -15,6 +15,7 @@ let sortKey = DEFAULT_SORT_KEY;
 let sortDir = "desc";
 const functions = getFunctions();
 const listAdminRegistrations = httpsCallable(functions, "listAdminRegistrations");
+const listAdminRegistrationsHttpUrl = "https://us-central1-blood-drive-test.cloudfunctions.net/listAdminRegistrationsHttp";
 let loadingRegistrations = false;
 
 const columns = [
@@ -104,11 +105,11 @@ async function watchRegistrations(onRecords) {
   });
 
   try {
-    const result = await listAdminRegistrations();
-    const records = Array.isArray(result.data?.registrations) ? result.data.registrations : [];
+    const data = await fetchAdminRegistrations();
+    const records = Array.isArray(data?.registrations) ? data.registrations : [];
     debugAdminCheckpoint("registrations-fetch-success", {
       count: records.length,
-      adminDocumentId: redactId(result.data?.adminDocumentId),
+      adminDocumentId: redactId(data?.adminDocumentId),
     });
     onRecords(records);
   } catch (error) {
@@ -120,6 +121,53 @@ async function watchRegistrations(onRecords) {
   } finally {
     loadingRegistrations = false;
   }
+}
+
+async function fetchAdminRegistrations() {
+  try {
+    const result = await listAdminRegistrations();
+    debugAdminCheckpoint("registrations-fetch-callable-success");
+    return result.data;
+  } catch (callableError) {
+    debugAdminCheckpoint("registrations-fetch-callable-error", {
+      code: callableError?.code || "unknown",
+      message: callableError?.message || String(callableError),
+      fallback: "listAdminRegistrationsHttp",
+    });
+
+    if (!shouldTryHttpFallback(callableError)) throw callableError;
+    return fetchAdminRegistrationsHttp(callableError);
+  }
+}
+
+function shouldTryHttpFallback(error) {
+  const code = error?.code || "";
+  return !code || code === "functions/internal" || code === "internal" || code === "functions/unavailable" || code === "unavailable";
+}
+
+async function fetchAdminRegistrationsHttp(originalError) {
+  const token = await auth.currentUser?.getIdToken(true);
+  if (!token) throw originalError;
+
+  debugAdminCheckpoint("registrations-fetch-http-start", { endpoint: listAdminRegistrationsHttpUrl });
+  const response = await fetch(listAdminRegistrationsHttpUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({}),
+  });
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const fallbackError = new Error(payload?.error?.message || `HTTP fallback failed with status ${response.status}.`);
+    fallbackError.code = payload?.error?.code || `http-${response.status}`;
+    throw fallbackError;
+  }
+
+  debugAdminCheckpoint("registrations-fetch-http-success");
+  return payload.data;
 }
 
 function showLoadError(error) {
