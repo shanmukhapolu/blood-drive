@@ -4,8 +4,6 @@ import { requireAdmin, logout } from "./auth.js";
 import {
   collection,
   getDocs,
-  getDoc,
-  doc,
   orderBy,
   query
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
@@ -57,27 +55,21 @@ async function initStatisticsPage() {
 
 async function loadRegistrations() {
   try {
-    const testId = "w19RtGA6Qy61P7uJrbzC";
+    const registrationsQuery = query(
+      collection(db, REGISTRATIONS_COLLECTION),
+      orderBy("createdAt", "desc")
+    );
+    const snapshot = await getDocs(registrationsQuery);
 
-    const registrationRef = doc(db, "registrations", testId);
-    const snapshot = await getDoc(registrationRef);
+    console.info("[Admin Dashboard] registrations read:", snapshot.size);
 
-    console.log("[Admin Dashboard] single registration read:", snapshot.exists());
-
-    if (!snapshot.exists()) {
-      console.log("[Admin Dashboard] registration does not exist");
-      return [];
-    }
-
-    return [
-      serialize({
-        id: snapshot.id,
-        ...snapshot.data(),
-      }),
-    ];
+    return snapshot.docs.map((registration) => serialize({
+      id: registration.id,
+      ...registration.data(),
+    }));
   } catch (error) {
-    console.error("[Admin Dashboard] single registration read failed:", error);
-    showError("Could not load registration.");
+    console.error("[Admin Dashboard] registrations read failed:", error);
+    showError("Could not load registrations.");
     return [];
   }
 }
