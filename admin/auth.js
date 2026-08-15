@@ -62,6 +62,13 @@ export function requireAdmin({ onReady, onDenied }) {
 
     try {
       const profile = await getAdminProfile(user);
+      console.info("[Admin Auth] authenticated identity", {
+  uid: user.uid,
+  email: user.email,
+  profileId: profile?.id || null,
+  role: profile?.role || null,
+  status: profile?.status || null,
+});
       finishAuthCheck();
 
       if (!profile) {
