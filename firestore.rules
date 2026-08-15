@@ -53,29 +53,22 @@ service cloud.firestore {
 
 
     // ------------------------------------------------------------------
-    // admins: allow-listed administrative accounts. A hidden signup page may
-    // create only its own admin profile, and only when the email has been
-    // pre-approved in approvedAdminEmails/{email}.
+    // admins: self-service signup may create only the signed-in user's own
+    // admin profile, and it must start with status 'disabled'. An organizer
+    // must manually change status to 'enabled' in Firebase before the account
+    // can read registration data.
     // ------------------------------------------------------------------
     match /admins/{uid} {
       allow read: if request.auth != null && request.auth.uid == uid;
       allow create: if request.auth != null
         && request.auth.uid == uid
-        && request.resource.data.keys().hasOnly(['email', 'role', 'active', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['email', 'role', 'status', 'createdAt'])
         && request.resource.data.email is string
         && request.resource.data.email == request.auth.token.email
         && request.resource.data.role == 'admin'
-        && request.resource.data.active == true
-        && request.resource.data.createdAt == request.time
-        && exists(/databases/$(database)/documents/approvedAdminEmails/$(request.auth.token.email))
-        && get(/databases/$(database)/documents/approvedAdminEmails/$(request.auth.token.email)).data.active == true;
+        && request.resource.data.status == 'disabled'
+        && request.resource.data.createdAt == request.time;
       allow update, delete: if false;
-    }
-
-    // This collection is managed directly in the Firebase console or by a
-    // trusted server process. Clients cannot list or read the allowlist.
-    match /approvedAdminEmails/{email} {
-      allow read, write: if false;
     }
 
     // ------------------------------------------------------------------
@@ -192,6 +185,6 @@ function isValidSlotIncrement(before, after) {
 function isAdmin() {
   return request.auth != null
     && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
-    && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.active == true
+    && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.status == 'enabled'
     && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == 'admin';
 }

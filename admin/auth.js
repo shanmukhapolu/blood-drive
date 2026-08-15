@@ -10,7 +10,7 @@ export async function getAdminProfile(user) {
   const snap = await getDoc(doc(db, "admins", user.uid));
   if (!snap.exists()) return null;
   const data = snap.data();
-  if (data.active !== true || data.role !== "admin") return null;
+  if (data.status !== "enabled" || data.role !== "admin") return null;
   return data;
 }
 
