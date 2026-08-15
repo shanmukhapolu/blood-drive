@@ -1,7 +1,7 @@
 import { CONFIG, TIME_SLOTS } from "../config.js";
 import { db } from "../firebase-init.js";
 import { requireAdmin, logout } from "./auth.js";
-import { collection, onSnapshot } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
+import { collection, onSnapshot, orderBy, query } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
 
 const PAGE_SIZE = 25;
 const DEFAULT_SORT_KEY = "createdAt";
@@ -36,7 +36,8 @@ const columns = [
 ];
 
 requireAdmin({
-  onReady: (user) => {
+  onReady: (user, profile) => {
+    debugAdminCheckpoint("admin-ready", { email: user.email || "missing", adminDocumentId: redactId(profile?.id) });
     initShell(user);
 
     if (isRegistrationsPage()) {
@@ -71,6 +72,7 @@ function initShell(user) {
 }
 
 function initRegistrationsPage() {
+  debugAdminCheckpoint("registrations-page-init", { collection: REGISTRATIONS_COLLECTION });
   fillFilterOptions();
   renderTableHead();
   bindRegistrationControls();
@@ -83,6 +85,7 @@ function initRegistrationsPage() {
 }
 
 function initStatisticsPage() {
+  debugAdminCheckpoint("statistics-page-init", { collection: REGISTRATIONS_COLLECTION });
   setStatsLoadingState();
   watchRegistrations((records) => {
     registrations = records;
@@ -93,13 +96,28 @@ function initStatisticsPage() {
 function watchRegistrations(onRecords) {
   if (unsubscribeRegistrations) unsubscribeRegistrations();
 
+  const registrationsQuery = query(collection(db, REGISTRATIONS_COLLECTION), orderBy(DEFAULT_SORT_KEY, "desc"));
+  debugAdminCheckpoint("registrations-listener-start", {
+    collection: REGISTRATIONS_COLLECTION,
+    orderBy: `${DEFAULT_SORT_KEY} desc`,
+  });
+
   unsubscribeRegistrations = onSnapshot(
-    collection(db, REGISTRATIONS_COLLECTION),
+    registrationsQuery,
     (snapshot) => {
       const records = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+      debugAdminCheckpoint("registrations-snapshot", {
+        count: records.length,
+        fromCache: snapshot.metadata.fromCache,
+        pendingWrites: snapshot.metadata.hasPendingWrites,
+      });
       onRecords(records);
     },
     (error) => {
+      debugAdminCheckpoint("registrations-listener-error", {
+        code: error?.code || "unknown",
+        message: error?.message || String(error),
+      });
       showLoadError(error);
     }
   );
@@ -107,9 +125,10 @@ function watchRegistrations(onRecords) {
 
 function showLoadError(error) {
   const code = error?.code || "unknown";
+  const rawMessage = error?.message || String(error || "No error details returned.");
   const message =
     code === "permission-denied"
-      ? "Firestore denied access. Make sure your Firebase Auth user has an admins record with status enabled and role admin, and deploy the latest rules."
+      ? "Firestore denied access. Make sure your Firebase Auth user has an admins record whose document ID is your Firebase Auth UID or exact email, with role admin and status enabled, then deploy the latest rules."
       : "Unable to load registration data directly from Firestore. Please refresh or check Firebase configuration.";
 
   if ($("counts")) $("counts").textContent = "Unable to load registrations";
@@ -128,7 +147,7 @@ function showLoadError(error) {
     panel.appendChild(el("p", "", message));
     $("stats").appendChild(panel);
   }
-  if ($("error")) $("error").textContent = message;
+  if ($("error")) $("error").textContent = `${message} (${code}: ${rawMessage}) Check the browser console for [Admin Dashboard] and [Admin Auth] checkpoints.`;
 }
 
 function setRegistrationLoadingState() {
@@ -557,4 +576,16 @@ function el(tag, className = "", text = "") {
   if (className) element.className = className;
   if (text) element.textContent = text;
   return element;
+}
+
+
+function debugAdminCheckpoint(label, details = {}) {
+  console.info(`[Admin Dashboard] ${label}`, details);
+}
+
+function redactId(value) {
+  const text = String(value || "");
+  if (text.includes("@")) return text;
+  if (text.length <= 8) return text || "missing";
+  return `${text.slice(0, 4)}…${text.slice(-4)}`;
 }
