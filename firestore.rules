@@ -31,7 +31,7 @@ service cloud.firestore {
     // registrations
     // ------------------------------------------------------------------
     match /registrations/{registrationId} {
-      allow read: if false;
+      allow read: if isAdmin();
       allow update: if false;
       allow delete: if false;
 
@@ -49,6 +49,33 @@ service cloud.firestore {
       allow delete: if false;
 
       allow update: if isValidSlotIncrement(resource.data, request.resource.data);
+    }
+
+
+    // ------------------------------------------------------------------
+    // admins: allow-listed administrative accounts. A hidden signup page may
+    // create only its own admin profile, and only when the email has been
+    // pre-approved in approvedAdminEmails/{email}.
+    // ------------------------------------------------------------------
+    match /admins/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow create: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['email', 'role', 'active', 'createdAt'])
+        && request.resource.data.email is string
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.role == 'admin'
+        && request.resource.data.active == true
+        && request.resource.data.createdAt == request.time
+        && exists(/databases/$(database)/documents/approvedAdminEmails/$(request.auth.token.email))
+        && get(/databases/$(database)/documents/approvedAdminEmails/$(request.auth.token.email)).data.active == true;
+      allow update, delete: if false;
+    }
+
+    // This collection is managed directly in the Firebase console or by a
+    // trusted server process. Clients cannot list or read the allowlist.
+    match /approvedAdminEmails/{email} {
+      allow read, write: if false;
     }
 
     // ------------------------------------------------------------------
@@ -160,4 +187,11 @@ function isValidSlotIncrement(before, after) {
     // Every other field on the document (bloodDriveId, slotId, label, ...)
     // must remain unchanged by a client update.
     && after.diff(before).affectedKeys().hasOnly(['count']);
+}
+
+function isAdmin() {
+  return request.auth != null
+    && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+    && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.active == true
+    && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == 'admin';
 }
