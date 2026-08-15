@@ -50,12 +50,23 @@ async function initStatisticsPage() {
 
 async function loadRegistrations() {
   try {
-    const registrationsQuery = query(collection(db, REGISTRATIONS_COLLECTION), orderBy("createdAt", "desc"));
-    const snapshot = await getDocs(registrationsQuery);
-    return snapshot.docs.map((docSnap) => serialize({ id: docSnap.id, ...docSnap.data() }));
+    const snapshot = await getDocs(
+      collection(db, REGISTRATIONS_COLLECTION)
+    );
+
+    console.log("[Admin Dashboard] registrations read:", snapshot.size);
+
+    return snapshot.docs.map((docSnap) =>
+      serialize({
+        id: docSnap.id,
+        ...docSnap.data(),
+      })
+    );
   } catch (error) {
-    console.info("[Admin Dashboard] registrations load failed", { code: error?.code || "unknown", message: error?.message || String(error) });
-    showError("Could not load registrations from Firebase. Confirm your admin record has role admin and status enabled, and deploy the latest Firestore rules.");
+    console.error("[Admin Dashboard] registrations load failed:", error);
+    showError(
+      `Could not load registrations: ${error?.code || "unknown"}`
+    );
     return [];
   }
 }
