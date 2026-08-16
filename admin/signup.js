@@ -27,12 +27,12 @@ form.addEventListener("submit", async (event) => {
 
     await setDoc(doc(db, "admins", credential.user.uid), {
       email,
-      role: "admin",
+      role: "none",
       status: "disabled",
       createdAt: serverTimestamp(),
     });
 
-    show("Account created. Change this admin record status to enabled in Firebase to allow dashboard access.");
+    show("Account created. An enabled administrator must set role and status in Firebase before this account receives access.");
   } catch (error) {
     console.info("[Admin Signup] setup failed", { code: error?.code || "unknown" });
     show("Account setup failed. Make sure the email and password are valid.");

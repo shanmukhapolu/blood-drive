@@ -1,14 +1,43 @@
 rules_version = '2';
 
-// Simple test rules for the CHS Blood Drive prototype.
-// These rules keep the app unblocked while testing. Tighten before collecting
-// real student information.
 service cloud.firestore {
   match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function adminProfile() { return get(/databases/$(database)/documents/admins/$(request.auth.uid)).data; }
+    function enabledRole(role) { return signedIn() && adminProfile().status == "enabled" && adminProfile().role == role; }
+    function isAdmin() { return enabledRole("admin"); }
+    function isCheckin() { return enabledRole("checkin"); }
+    function canCheckin() { return isAdmin() || isCheckin(); }
+    function validOutcome(value) { return value in ["single", "double", "deferred", "other"]; }
+
     match /registrations/{registrationId} {
-      allow read: if request.auth != null;
+      allow read: if isAdmin() || isCheckin();
       allow create: if true;
-      allow update, delete: if request.auth != null;
+      allow update, delete: if isAdmin();
+    }
+
+    match /checkins/{registrationId} {
+      allow read: if canCheckin();
+      allow create: if canCheckin()
+        && request.resource.data.keys().hasOnly(["registrationId", "status", "checkedInAt", "checkedInBy", "updatedAt", "updatedBy"])
+        && request.resource.data.registrationId == registrationId
+        && request.resource.data.status == "checked_in"
+        && request.resource.data.checkedInAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.checkedInBy == request.auth.uid
+        && request.resource.data.updatedBy == request.auth.uid;
+      allow update: if canCheckin()
+        && resource.data.status == "checked_in"
+        && request.resource.data.status == "completed"
+        && request.resource.data.checkedInAt == resource.data.checkedInAt
+        && request.resource.data.checkedInBy == resource.data.checkedInBy
+        && request.resource.data.checkedOutAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.checkedOutBy == request.auth.uid
+        && request.resource.data.updatedBy == request.auth.uid
+        && validOutcome(request.resource.data.outcome)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "checkedOutAt", "checkedOutBy", "outcome", "updatedAt", "updatedBy"]);
+      allow delete: if isAdmin();
     }
 
     match /slotCounts/{slotDocId} {
@@ -16,13 +45,15 @@ service cloud.firestore {
     }
 
     match /admins/{adminId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null && adminId == request.auth.uid;
-      allow update, delete: if request.auth != null;
+      allow read: if signedIn() && (adminId == request.auth.uid || isAdmin());
+      allow create: if signedIn() && adminId == request.auth.uid
+        && request.resource.data.role == "none"
+        && request.resource.data.status == "disabled";
+      allow update, delete: if isAdmin();
     }
 
     match /{document=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isAdmin();
     }
   }
 }
