@@ -3,19 +3,19 @@ import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/fi
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
 
 export const auth = getAuth(app);
-export const UNAUTHORIZED = "Your account is not authorized to access the administrative dashboard.";
+export const UNAUTHORIZED = "Your account is not authorized to access this administrative area.";
 
 export async function getAdminProfile(user) {
   if (!user?.uid) return null;
 
   const uidProfile = await readAdminDocument(user.uid);
-  if (isEnabledAdmin(uidProfile)) return uidProfile;
+  if (isEnabledRole(uidProfile)) return uidProfile;
 
   const email = normalizeEmail(user.email);
   if (!email) return null;
 
   const emailIdProfile = await readAdminDocument(email);
-  if (isEnabledAdmin(emailIdProfile)) return emailIdProfile;
+  if (isEnabledRole(emailIdProfile)) return emailIdProfile;
 
   return null;
 }
@@ -31,17 +31,31 @@ async function readAdminDocument(adminId) {
 }
 
 function normalizeAdminProfile(id, data) {
+  const role = String(data?.role || "none").toLowerCase();
+  const status = String(data?.status || "disabled").toLowerCase();
   return {
     id,
     ...data,
     email: normalizeEmail(data?.email),
-    role: String(data?.role || "").toLowerCase(),
-    status: String(data?.status || "").toLowerCase(),
+    role: ["admin", "checkin", "none"].includes(role) ? role : "none",
+    status: status === "enabled" ? "enabled" : "disabled",
   };
 }
 
-function isEnabledAdmin(profile) {
+export function isEnabledAdmin(profile) {
   return profile?.role === "admin" && profile.status === "enabled";
+}
+
+export function isEnabledCheckin(profile) {
+  return profile?.role === "checkin" && profile.status === "enabled";
+}
+
+export function canUseCheckin(profile) {
+  return isEnabledAdmin(profile) || isEnabledCheckin(profile);
+}
+
+function isEnabledRole(profile) {
+  return isEnabledAdmin(profile) || isEnabledCheckin(profile);
 }
 
 function normalizeEmail(email) {
@@ -53,7 +67,7 @@ function finishAuthCheck() {
   document.body.classList.add("admin-auth-ready");
 }
 
-export function requireAdmin({ onReady, onDenied }) {
+export function requireAdmin({ onReady, onDenied, allowCheckin = false, adminOnly = false } = {}) {
   return onAuthStateChanged(auth, async (user) => {
     if (!user) {
       window.location.replace("/admin/login.html");
@@ -62,16 +76,24 @@ export function requireAdmin({ onReady, onDenied }) {
 
     try {
       const profile = await getAdminProfile(user);
-      console.info("[Admin Auth] authenticated identity", {
-  uid: user.uid,
-  email: user.email,
-  profileId: profile?.id || null,
-  role: profile?.role || null,
-  status: profile?.status || null,
-});
       finishAuthCheck();
 
       if (!profile) {
+        onDenied?.(UNAUTHORIZED);
+        return;
+      }
+
+      if (adminOnly && !isEnabledAdmin(profile)) {
+        window.location.replace("/admin/checkin.html");
+        return;
+      }
+
+      if (!allowCheckin && !isEnabledAdmin(profile)) {
+        window.location.replace("/admin/checkin.html");
+        return;
+      }
+
+      if (allowCheckin && !canUseCheckin(profile)) {
         onDenied?.(UNAUTHORIZED);
         return;
       }
@@ -80,7 +102,7 @@ export function requireAdmin({ onReady, onDenied }) {
     } catch (error) {
       finishAuthCheck();
       console.info("[Admin Auth] authorization failed", { code: error?.code || "unknown", message: error?.message || String(error) });
-      onDenied?.("Admin authorization could not be verified. Please try again later.");
+      onDenied?.("Authorization could not be verified. Please try again later.");
     }
   });
 }
