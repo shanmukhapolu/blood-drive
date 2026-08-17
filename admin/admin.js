@@ -1,6 +1,6 @@
 import { CONFIG, SENATORS, TIME_SLOTS } from "../config.js";
 import { db } from "../firebase-init.js";
-import { requireAdmin, logout } from "./auth.js";
+import { requireAdmin, logout, isEnabledAdmin } from "./auth.js";
 import {
   collection,
   doc,
