@@ -544,7 +544,3 @@ function dateRange(start, end) { const dates = []; for (let d = startOfDay(start
 function countSince(records, start, end) { return records.filter((record) => { const date = toDate(record.createdAt); return date && date >= start && date < end; }).length; }
 function percent(value, total) { return total ? `${Math.round((value / total) * 100)}%` : "0%"; }
 function popular(items, highest) { const sorted = [...items].sort((a, b) => highest ? b.count - a.count : a.count - b.count); const item = sorted[0]; return item ? `${item.label} (${item.count})` : "None"; }
-
-function isEnabledAdmin(profile) {
-  return profile?.role === "admin" && profile.status === "enabled";
-}
