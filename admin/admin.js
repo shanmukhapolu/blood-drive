@@ -63,8 +63,8 @@ function initShell(user, profile) {
 function renderNavigation(profile) {
   document.querySelectorAll(".nav").forEach((nav) => {
     nav.textContent = "";
-    const adminLinks = [["Dashboard", "index.html"], ["Registrations", "registrations.html"], ["Check-In", "checkin.html"], ["Statistics", "statistics.html"]];
-    const checkinLinks = [["Check-In", "checkin.html"], ["Recent Activity", "checkin-activity.html"]];
+    const adminLinks = [["Dashboard", "/admin/"], ["Registrations", "/admin/registrations.html"], ["Check-In", "/admin/checkin/"], ["Statistics", "/admin/statistics.html"]];
+    const checkinLinks = [["Check-In", "/admin/checkin/"], ["Recent Activity", "/admin/checkin/activity/"]];
     const links = isEnabledAdmin(profile) ? adminLinks : checkinLinks;
     let current = location.pathname.split("/").pop() || "index.html";
     if (location.pathname.includes("checkin/activity")) current = "checkin-activity.html";
@@ -73,7 +73,7 @@ function renderNavigation(profile) {
       const a = document.createElement("a");
       a.href = href;
       a.textContent = label;
-      if (href === current || (href === "checkin-activity.html" && current === "checkin-activity.html")) a.className = "active";
+      if (href.endsWith(current) || (href === "/admin/" && current === "index.html") || (href === "/admin/checkin/activity/" && current === "checkin-activity.html") || (href === "/admin/checkin/" && current === "checkin.html")) a.className = "active";
       nav.appendChild(a);
     });
   });
@@ -544,3 +544,7 @@ function dateRange(start, end) { const dates = []; for (let d = startOfDay(start
 function countSince(records, start, end) { return records.filter((record) => { const date = toDate(record.createdAt); return date && date >= start && date < end; }).length; }
 function percent(value, total) { return total ? `${Math.round((value / total) * 100)}%` : "0%"; }
 function popular(items, highest) { const sorted = [...items].sort((a, b) => highest ? b.count - a.count : a.count - b.count); const item = sorted[0]; return item ? `${item.label} (${item.count})` : "None"; }
+
+function isEnabledAdmin(profile) {
+  return profile?.role === "admin" && profile.status === "enabled";
+}
