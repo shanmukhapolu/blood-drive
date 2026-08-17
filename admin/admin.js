@@ -3,6 +3,7 @@ import { db } from "../firebase-init.js";
 import { requireAdmin, logout, isEnabledAdmin } from "./auth.js";
 import {
   collection,
+  deleteDoc,
   doc,
   getDocs,
   limit,
@@ -10,11 +11,15 @@ import {
   orderBy,
   query,
   runTransaction,
-  serverTimestamp
+  serverTimestamp,
+  setDoc
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
 
 const REGISTRATIONS_COLLECTION = "registrations";
 const CHECKINS_COLLECTION = "checkins";
+const CHECKIN_ACTIVITY_COLLECTION = "checkinActivity";
+const SLOT_COUNTS_COLLECTION = "slotCounts";
+const ADMINS_COLLECTION = "admins";
 const OUTCOMES = { single: "Single Donation", double: "Double Donation", deferred: "Deferred", other: "Did Not Donate / Other" };
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 const DRIVE_DATE = new Date(`${CONFIG.bloodDriveDate}T00:00:00`);
@@ -22,6 +27,8 @@ const REGISTRATION_START = new Date("2026-08-15T00:00:00");
 const $ = (id) => document.getElementById(id);
 
 let registrations = [];
+let adminDirectory = new Map();
+let slotCapacities = new Map();
 let tableState = { sortKey: "createdAt", sortDirection: "desc", page: 1, pageSize: 25 };
 
 requireAdmin({
@@ -82,10 +89,13 @@ function renderNavigation(profile) {
 async function initRegistrationsPage() {
   fillFilters();
   bindFilters();
+  bindRegistrationActions();
   renderTable([]);
   setText("counts", "Loading registrations…");
 
+  await Promise.all([loadAdminDirectory(), loadSlotCapacities()]);
   registrations = await loadRegistrations();
+  renderSlotCapacityEditor();
   renderRegistrations();
 }
 
@@ -95,6 +105,25 @@ async function initStatisticsPage() {
 
   registrations = await loadRegistrations();
   renderStats(registrations);
+}
+
+async function loadAdminDirectory() {
+  try {
+    const snap = await getDocs(collection(db, ADMINS_COLLECTION));
+    adminDirectory = new Map(snap.docs.map((d) => {
+      const data = d.data();
+      const name = [data.firstName, data.lastName].filter(Boolean).join(" ").trim() || data.name || data.displayName || data.email || d.id;
+      return [d.id, name];
+    }));
+  } catch (error) {
+    console.info("[Admin Dashboard] admin directory read failed", { code: error?.code || "unknown" });
+    adminDirectory = new Map();
+  }
+}
+
+async function loadSlotCapacities() {
+  const snap = await getDocs(collection(db, SLOT_COUNTS_COLLECTION));
+  slotCapacities = new Map(snap.docs.map((d) => [d.data().slotId || d.id.split("_").pop(), serialize({ id: d.id, ...d.data() })]));
 }
 
 async function loadRegistrations() {
@@ -161,9 +190,43 @@ function bindFilters() {
   $("refresh")?.addEventListener("click", async () => {
     setText("counts", "Refreshing registrations…");
     registrations = await loadRegistrations();
+    await loadSlotCapacities();
+    renderSlotCapacityEditor();
     renderRegistrations();
   });
 }
+
+function bindRegistrationActions() {
+  $("export-all-csv")?.addEventListener("click", () => showExportModal(filteredRecords(), "all-registrations", "csv"));
+  $("export-all-pdf")?.addEventListener("click", () => showExportModal(filteredRecords(), "all-registrations", "pdf"));
+}
+
+function renderSlotCapacityEditor() {
+  const root = $("slot-capacity-grid");
+  if (!root) return;
+  root.textContent = "";
+  TIME_SLOTS.forEach((slot) => {
+    const data = slotCapacities.get(slot.id) || { capacity: slot.capacity, count: 0 };
+    const wrap = document.createElement("div");
+    wrap.className = "slot-capacity-item";
+    const label = document.createElement("label");
+    label.textContent = `${slot.label} (${data.count || 0} registered)`;
+    const input = document.createElement("input");
+    input.type = "number";
+    input.min = String(data.count || 0);
+    input.value = String(data.capacity ?? slot.capacity);
+    const button = smallButton("Save", async () => {
+      const capacity = Math.max(Number(input.value) || 0, Number(data.count) || 0);
+      await setDoc(doc(db, SLOT_COUNTS_COLLECTION, slotDocId(slot.id)), { bloodDriveId: CONFIG.bloodDriveId, slotId: slot.id, label: slot.label, capacity, count: Number(data.count) || 0 }, { merge: true });
+      await loadSlotCapacities();
+      renderSlotCapacityEditor();
+    });
+    wrap.append(label, input, button);
+    root.appendChild(wrap);
+  });
+}
+
+function slotDocId(slotId) { return `${CONFIG.bloodDriveId}_${slotId}`; }
 
 function setSort(sortKey) {
   if (tableState.sortKey === sortKey) {
@@ -238,7 +301,7 @@ function renderTable(records) {
   if (!records.length) {
     const row = document.createElement("tr");
     const cell = document.createElement("td");
-    cell.colSpan = 17;
+    cell.colSpan = 18;
     cell.textContent = "No registrations to display.";
     row.appendChild(cell);
     rows.appendChild(row);
@@ -252,10 +315,94 @@ function renderTable(records) {
         cell.textContent = value ?? "";
         row.appendChild(cell);
       });
+    const actions = document.createElement("td");
+    actions.className = "table-actions";
+    actions.append(smallButton("Export", () => showExportModal([record], `${record.firstName || "student"}-${record.lastName || "registration"}`)), smallButton("Delete", () => showDeleteModal(record), "danger-lite"));
+    row.appendChild(actions);
     row.addEventListener("click", () => showDetail(record));
+    actions.addEventListener("click", (event) => event.stopPropagation());
     rows.appendChild(row);
   });
 }
+
+function smallButton(label, handler, className = "secondary") {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `small-button ${className}`;
+  button.textContent = label;
+  button.addEventListener("click", handler);
+  return button;
+}
+
+function showExportModal(records, filenameBase, preferredFormat = "") {
+  const root = $("modal-root");
+  if (!root) return;
+  root.textContent = "";
+  const modal = modalShell(`Export ${records.length} registration${records.length === 1 ? "" : "s"}`);
+  const body = document.createElement("div");
+  body.className = "modal-actions-stack";
+  const csv = smallButton("Download CSV", () => downloadCsv(records, filenameBase));
+  const pdf = smallButton("Open printable PDF view", () => openPrintableExport(records));
+  body.append(csv, pdf);
+  modal.card.appendChild(body);
+  root.appendChild(modal.overlay);
+  if (preferredFormat === "csv") downloadCsv(records, filenameBase);
+  if (preferredFormat === "pdf") openPrintableExport(records);
+}
+
+function showDeleteModal(record) {
+  const root = $("modal-root");
+  if (!root) return;
+  root.textContent = "";
+  const modal = modalShell(`Delete ${record.firstName || "this"} ${record.lastName || "registration"}?`);
+  const reason = document.createElement("select");
+  [["", "Select a required reason"], ["student_declined", "Student does not want to donate"], ["testing", "Just for testing"], ["other", "Other"]].forEach(([v,l]) => reason.append(new Option(l,v)));
+  const other = document.createElement("textarea");
+  other.placeholder = "Required when Other is selected";
+  other.className = "hidden";
+  const error = document.createElement("p");
+  error.className = "error";
+  const confirm = smallButton("Delete from Firebase", async () => {
+    if (!reason.value || (reason.value === "other" && !other.value.trim())) { error.textContent = "Choose a reason. If you select Other, add a written explanation."; return; }
+    await setDoc(doc(collection(db, "registrationDeletionLogs")), { registrationId: record.id, reason: reason.value, otherReason: other.value.trim(), deletedAt: serverTimestamp() });
+    await deleteDoc(doc(db, REGISTRATIONS_COLLECTION, record.id));
+    await deleteDoc(doc(db, CHECKINS_COLLECTION, record.id)).catch(() => {});
+    registrations = registrations.filter((r) => r.id !== record.id);
+    root.textContent = "";
+    renderRegistrations();
+  }, "danger");
+  reason.addEventListener("input", () => other.classList.toggle("hidden", reason.value !== "other"));
+  modal.card.append(detailSection("Required deletion reason", [["Student", `${record.firstName || ""} ${record.lastName || ""}`.trim()], ["Confirmation ID", record.id]]), reason, other, error, confirm);
+  root.appendChild(modal.overlay);
+}
+
+function modalShell(titleText) {
+  const overlay = document.createElement("div"); overlay.className = "modal";
+  const card = document.createElement("div"); card.className = "modal-card";
+  const header = document.createElement("div"); header.className = "summary-line";
+  const title = document.createElement("h2"); title.textContent = titleText;
+  const close = smallButton("Close", () => { const root = $("modal-root"); if (root) root.textContent = ""; });
+  header.append(title, close); card.appendChild(header); overlay.appendChild(card);
+  overlay.addEventListener("click", (event) => { if (event.target === overlay) overlay.remove(); });
+  return { overlay, card };
+}
+
+function exportRows(records) {
+  return records.map((r) => ({ confirmationId: r.id, submitted: formatTimestamp(r.createdAt), firstName: r.firstName, lastName: r.lastName, parentEmail: r.parentEmail, studentEmail: r.studentEmail, phone: r.phone, dob: r.dob, studentId: r.studentId, nhsSeniorMember: yesNo(r.nhsSeniorMember), senators: (r.senatorIds || []).map(senatorName).join("; "), appointment: slotLabel(r.appointmentSlotId), status: operationalLabel(r.checkin?.status), checkedInAt: formatTimestamp(r.checkin?.checkedInAt), checkedInBy: adminName(r.checkin?.checkedInBy, r.checkin?.checkedInByName), checkedOutAt: formatTimestamp(r.checkin?.checkedOutAt), checkedOutBy: adminName(r.checkin?.checkedOutBy, r.checkin?.checkedOutByName), outcome: outcomeLabel(r.checkin?.outcome) }));
+}
+function downloadCsv(records, filenameBase) { const rows = exportRows(records); const headers = Object.keys(rows[0] || { confirmationId: "" }); const csv = [headers.join(","), ...rows.map((row) => headers.map((h) => `"${String(row[h] ?? "").replace(/"/g, '""')}"`).join(","))].join("\n"); const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); a.download = `${filenameBase}.csv`; a.click(); URL.revokeObjectURL(a.href); }
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[char]);
+}
+function openPrintableExport(records) {
+  const win = window.open("", "_blank");
+  if (!win) return;
+  const rows = exportRows(records);
+  win.document.write(`<title>Registration Export</title><style>body{font-family:Arial,sans-serif;padding:24px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:6px;font-size:12px}</style><h1>Registration Export</h1><table><thead><tr>${Object.keys(rows[0] || {}).map((h) => `<th>${escapeHtml(h)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${Object.values(row).map((v) => `<td>${escapeHtml(v)}</td>`).join("")}</tr>`).join("")}</tbody></table>`);
+  win.document.close();
+  win.print();
+}
+
 
 function showDetail(record) {
   const root = $("modal-root");
@@ -274,7 +421,7 @@ function showDetail(record) {
   close.type = "button";
   close.textContent = "Close";
   header.append(title, close);
-  card.append(header, detailSection("Registration", [["Confirmation ID", record.id], ["Date submitted", formatTimestamp(record.createdAt)], ["Appointment", slotLabel(record.appointmentSlotId)], ["Blood drive date", formatDriveDate(record.bloodDriveDate || CONFIG.bloodDriveDate)], ["Location", record.location || CONFIG.location]]), detailSection("Student", [["First name", record.firstName], ["Last name", record.lastName], ["Student email", record.studentEmail], ["Parent email", record.parentEmail], ["Phone", record.phone], ["Birthdate", formatDate(record.dob)], ["Age on drive date", record.ageOnDriveDate], ["Student ID", record.studentId], ["In NHS?", yesNo(record.nhsSeniorMember)], ["Senator(s) assisted", (record.senatorIds || []).map(senatorName).join(", ")]]), detailSection("Eligibility", [["Parent consent status", statusLabel(record.parentConsentStatus)], ["Age confirmed", yesNo(record.eligibilityAgeConfirmed)], ["No fall sport confirmed", yesNo(record.eligibilityNoFallSportConfirmed)], ["Schema version", record.schemaVersion]]), detailSection("Check-in operations", [["Operational status", operationalLabel(record.checkin?.status)], ["Checked in", formatTimestamp(record.checkin?.checkedInAt)], ["Checked in by", record.checkin?.checkedInBy], ["Checked out", formatTimestamp(record.checkin?.checkedOutAt)], ["Checked out by", record.checkin?.checkedOutBy], ["Outcome", outcomeLabel(record.checkin?.outcome)]]));
+  card.append(header, detailSection("Registration", [["Confirmation ID", record.id], ["Date submitted", formatTimestamp(record.createdAt)], ["Appointment", slotLabel(record.appointmentSlotId)], ["Blood drive date", formatDriveDate(record.bloodDriveDate || CONFIG.bloodDriveDate)], ["Location", record.location || CONFIG.location]]), detailSection("Student", [["First name", record.firstName], ["Last name", record.lastName], ["Student email", record.studentEmail], ["Parent email", record.parentEmail], ["Phone", record.phone], ["Birthdate", formatDate(record.dob)], ["Age on drive date", record.ageOnDriveDate], ["Student ID", record.studentId], ["In NHS?", yesNo(record.nhsSeniorMember)], ["Senator(s) assisted", (record.senatorIds || []).map(senatorName).join(", ")]]), detailSection("Eligibility", [["Parent consent status", statusLabel(record.parentConsentStatus)], ["Age confirmed", yesNo(record.eligibilityAgeConfirmed)], ["No fall sport confirmed", yesNo(record.eligibilityNoFallSportConfirmed)], ["Schema version", record.schemaVersion]]), detailSection("Check-in operations", [["Operational status", operationalLabel(record.checkin?.status)], ["Checked in", formatTimestamp(record.checkin?.checkedInAt)], ["Checked in by", adminName(record.checkin?.checkedInBy, record.checkin?.checkedInByName)], ["Checked out", formatTimestamp(record.checkin?.checkedOutAt)], ["Checked out by", adminName(record.checkin?.checkedOutBy, record.checkin?.checkedOutByName)], ["Outcome", outcomeLabel(record.checkin?.outcome)]]));
   modal.appendChild(card);
   root.appendChild(modal);
   close.addEventListener("click", () => { root.textContent = ""; });
@@ -305,13 +452,16 @@ async function loadCheckinsMap() {
   return new Map(snap.docs.map((d) => [d.id, serialize({ id: d.id, ...d.data() })]));
 }
 
-async function initCheckinPage(user) {
+async function initCheckinPage(user, profile) {
+  const actorName = adminDisplayName(profile, user);
   const search = $("checkin-search");
   const results = $("checkin-results");
   const summary = $("checkin-summary");
+  const expected = $("expected-soon");
   let regs = [];
   let checkins = new Map();
   try {
+    await loadAdminDirectory();
     const snap = await getDocs(query(collection(db, REGISTRATIONS_COLLECTION), orderBy("createdAt", "desc")));
     regs = snap.docs.map((d) => serialize({ id: d.id, ...d.data() }));
     setText("checkin-status", "Start typing to find a student.");
@@ -320,17 +470,49 @@ async function initCheckinPage(user) {
   }
   onSnapshot(collection(db, CHECKINS_COLLECTION), (snap) => {
     checkins = new Map(snap.docs.map((d) => [d.id, serialize({ id: d.id, ...d.data() })]));
+    markLateRegistrations(regs, checkins, user.uid, actorName);
     renderSummary(summary, regs, checkins);
+    renderExpectedSoon(expected, regs, checkins, user);
     renderCheckinResults(search?.value || "", regs, checkins, results, user);
   }, () => showError("Could not subscribe to check-in updates."));
   search?.addEventListener("input", () => renderCheckinResults(search.value, regs, checkins, results, user));
+  setInterval(() => { markLateRegistrations(regs, checkins, user.uid, actorName); renderExpectedSoon(expected, regs, checkins, user); }, 30000);
 }
 
 function renderSummary(root, regs, checkins) {
   if (!root) return;
-  const vals = { expected: regs.length, checked: 0, current: 0, completed: 0 };
-  checkins.forEach((c) => { if (c.status === "checked_in") { vals.checked++; vals.current++; } if (c.status === "completed") { vals.checked++; vals.completed++; } });
-  root.innerHTML = `<div><b>${vals.expected}</b><span>Expected</span></div><div><b>${vals.checked}</b><span>Checked In</span></div><div><b>${vals.current}</b><span>Currently Checked In</span></div><div><b>${vals.completed}</b><span>Completed</span></div>`;
+  const vals = { expected: regs.length, checked: 0, current: 0, completed: 0, late: 0 };
+  checkins.forEach((c) => { if (c.status === "checked_in") { vals.checked++; vals.current++; } if (c.status === "completed") { vals.checked++; vals.completed++; } if (c.status === "late") vals.late++; });
+  root.innerHTML = `<div><b>${vals.expected}</b><span>Expected</span></div><div><b>${vals.checked}</b><span>Checked In</span></div><div><b>${vals.current}</b><span>Currently Checked In</span></div><div><b>${vals.completed}</b><span>Completed</span></div><div><b>${vals.late}</b><span>Late</span></div>`;
+}
+
+function renderExpectedSoon(root, regs, checkins, user) {
+  if (!root) return;
+  const nowSlot = currentSlotId(new Date());
+  const expected = regs.filter((r) => r.appointmentSlotId === nowSlot && !["checked_in", "completed"].includes(checkins.get(r.id)?.status));
+  root.textContent = "";
+  if (!expected.length) { const empty = document.createElement("p"); empty.className = "muted"; empty.textContent = "No students are expected in the current 15-minute window."; root.appendChild(empty); return; }
+  expected.forEach((r) => root.appendChild(checkinCard({ ...r, checkin: checkins.get(r.id) || { status: "registered" } }, user)));
+}
+
+function currentSlotId(now) {
+  const minutes = now.getHours() * 60 + now.getMinutes();
+  const rounded = minutes - (minutes % 15);
+  return `${String(Math.floor(rounded / 60)).padStart(2, "0")}${String(rounded % 60).padStart(2, "0")}`;
+}
+
+async function markLateRegistrations(regs, checkins, uid, actorName) {
+  const now = new Date();
+  const late = regs.filter((r) => !checkins.has(r.id) && slotEndTime(r.appointmentSlotId) < now).slice(0, 20);
+  await Promise.all(late.map((r) => setDoc(doc(db, CHECKINS_COLLECTION, r.id), { registrationId: r.id, status: "late", lateAt: serverTimestamp(), updatedAt: serverTimestamp(), updatedBy: uid, updatedByName: actorName }, { merge: true })
+    .then(() => setDoc(doc(collection(db, CHECKIN_ACTIVITY_COLLECTION)), { registrationId: r.id, action: "late", actorUid: uid, actorName, occurredAt: serverTimestamp() }))
+    .catch(() => {})));
+}
+
+function slotEndTime(slotId) {
+  const hour = Number(String(slotId).slice(0, 2));
+  const minute = Number(String(slotId).slice(2));
+  return new Date(`${CONFIG.bloodDriveDate}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00`).getTime() + 15 * 60 * 1000;
 }
 
 function renderCheckinResults(term, regs, checkins, root, user) {
@@ -352,26 +534,32 @@ function checkinCard(record, user) {
   card.querySelectorAll("p")[0].textContent = `Student ID: ${record.studentId || "Not provided"} · Appointment: ${slotLabel(record.appointmentSlotId) || "Not selected"}`;
   card.querySelectorAll("p")[1].textContent = `${operationalLabel(status)}${record.checkin?.checkedInAt ? ` · Checked in ${timeOnly(record.checkin.checkedInAt)}` : ""}`;
   const actions = card.querySelector(".checkin-actions");
-  if (status === "registered") actions.append(actionButton("CHECK IN", () => transitionCheckin(record.id, "checkin", user.uid)));
-  else if (status === "checked_in") actions.append(actionButton("CHECK OUT", () => showCheckout(record, actions, user.uid)));
+  if (status === "registered" || status === "late") actions.append(actionButton(status === "late" ? "CHECK IN LATE" : "CHECK IN", () => transitionCheckin(record.id, "checkin", user.uid, adminDisplayName(null, user))));
+  else if (status === "checked_in") actions.append(actionButton("CHECK OUT", () => showCheckout(record, actions, user.uid, adminDisplayName(null, user))));
   else actions.append(Object.assign(document.createElement("strong"), { textContent: `Completed${record.checkin?.outcome ? ` · ${outcomeLabel(record.checkin.outcome)}` : ""}` }));
   return card;
 }
 
 function actionButton(label, handler) { const b = document.createElement("button"); b.className = "primary big-action"; b.type = "button"; b.textContent = label; b.addEventListener("click", handler); return b; }
-function showCheckout(record, root, uid) { root.textContent = ""; const sel = document.createElement("select"); Object.entries(OUTCOMES).forEach(([v,l]) => sel.append(new Option(l,v))); const b = actionButton("COMPLETE CHECK-OUT", () => transitionCheckin(record.id, "checkout", uid, sel.value)); root.append(sel,b); }
+function showCheckout(record, root, uid, actorName) { root.textContent = ""; const sel = document.createElement("select"); Object.entries(OUTCOMES).forEach(([v,l]) => sel.append(new Option(l,v))); const b = actionButton("COMPLETE CHECK-OUT", () => transitionCheckin(record.id, "checkout", uid, actorName, sel.value)); root.append(sel,b); }
 
-async function transitionCheckin(id, action, uid, outcome) {
+async function transitionCheckin(id, action, uid, actorName, outcome) {
   try {
     await runTransaction(db, async (tx) => {
       const ref = doc(db, CHECKINS_COLLECTION, id);
       const snap = await tx.get(ref);
       const current = snap.exists() ? snap.data().status : "registered";
-      if (action === "checkin" && current !== "registered") throw new Error("already-updated");
+      if (action === "checkin" && !["registered", "late"].includes(current)) throw new Error("already-updated");
       if (action === "checkout" && current !== "checked_in") throw new Error("already-updated");
-      const base = { registrationId: id, updatedAt: serverTimestamp(), updatedBy: uid };
-      if (action === "checkin") tx.set(ref, { ...base, status: "checked_in", checkedInAt: serverTimestamp(), checkedInBy: uid }, { merge: true });
-      else tx.set(ref, { ...base, status: "completed", checkedOutAt: serverTimestamp(), checkedOutBy: uid, outcome }, { merge: true });
+      const base = { registrationId: id, updatedAt: serverTimestamp(), updatedBy: uid, updatedByName: actorName };
+      const activityRef = doc(collection(db, CHECKIN_ACTIVITY_COLLECTION));
+      if (action === "checkin") {
+        tx.set(ref, { ...base, status: "checked_in", checkedInAt: serverTimestamp(), checkedInBy: uid, checkedInByName: actorName }, { merge: true });
+        tx.set(activityRef, { registrationId: id, action: "checkin", actorUid: uid, actorName, occurredAt: serverTimestamp() });
+      } else {
+        tx.set(ref, { ...base, status: "completed", checkedOutAt: serverTimestamp(), checkedOutBy: uid, checkedOutByName: actorName, outcome }, { merge: true });
+        tx.set(activityRef, { registrationId: id, action: "checkout", actorUid: uid, outcome, occurredAt: serverTimestamp() });
+      }
     });
     setText("checkin-message", action === "checkin" ? "Student checked in." : "Check-out completed.");
   } catch { setText("checkin-message", "Another staff member already updated this registration. The live status has refreshed."); }
@@ -382,16 +570,43 @@ async function initActivityPage() {
   let items = [];
   let names = new Map();
   try {
+    await loadAdminDirectory();
     const regs = await getDocs(collection(db, REGISTRATIONS_COLLECTION));
     names = new Map(regs.docs.map((d) => [d.id, `${d.data().firstName || ""} ${d.data().lastName || ""}`.trim() || d.id]));
+    fillAdminFilter(staff);
   } catch {}
-  onSnapshot(query(collection(db, CHECKINS_COLLECTION), orderBy("updatedAt", "desc"), limit(100)), (snap) => { items = snap.docs.map((d) => serialize({ id: d.id, ...d.data() })); renderActivity(items, names, type?.value || "", staff?.value || "", rows); });
+  onSnapshot(query(collection(db, CHECKIN_ACTIVITY_COLLECTION), orderBy("occurredAt", "desc"), limit(200)), (snap) => { items = snap.docs.map((d) => serialize({ id: d.id, ...d.data() })); renderActivity(items, names, type?.value || "", staff?.value || "", rows); });
   [type, staff].forEach((el) => el?.addEventListener("input", () => renderActivity(items, names, type?.value || "", staff?.value || "", rows)));
 }
-function renderActivity(items, names, type, staff, root) { if (!root) return; root.textContent=""; items.filter(i => (!type || (type === "checkin" ? i.status === "checked_in" : i.status === "completed")) && (!staff || String(i.updatedBy || "").toLowerCase().includes(staff.toLowerCase()))).forEach(i => { const div=document.createElement("div"); div.className="activity-row"; div.textContent = `${formatTimestamp(i.updatedAt)} — ${names.get(i.id) || i.id} — ${i.status === "completed" ? "Checked Out" : "Checked In"}${i.outcome ? ` — ${outcomeLabel(i.outcome)}` : ""} — By: ${i.updatedBy || "unknown"}`; root.appendChild(div); }); }
+
+function fillAdminFilter(select) {
+  if (!select) return;
+  select.textContent = "";
+  select.append(new Option("All admins", ""));
+  [...adminDirectory.entries()].sort((a,b) => a[1].localeCompare(b[1])).forEach(([uid, name]) => select.append(new Option(name, uid)));
+}
+
+function renderActivity(items, names, type, staff, root) {
+  if (!root) return;
+  root.textContent = "";
+  const filtered = items.filter((i) => (!type || i.action === type) && (!staff || i.actorUid === staff));
+  if (!filtered.length) { const empty = document.createElement("p"); empty.className = "muted"; empty.textContent = "No activity matches these filters."; root.appendChild(empty); return; }
+  filtered.forEach((i) => {
+    const div = document.createElement("article");
+    div.className = "activity-card";
+    const action = ({ checkin: "Checked in", checkout: "Checked out", late: "Marked late" })[i.action] || i.action || "Updated";
+    div.innerHTML = `<div><strong></strong><p></p></div><time></time>`;
+    div.querySelector("strong").textContent = `${action}: ${names.get(i.registrationId) || i.registrationId}`;
+    div.querySelector("p").textContent = `By ${adminName(i.actorUid, i.actorName) || "Unknown admin"}${i.outcome ? ` · Outcome: ${outcomeLabel(i.outcome)}` : ""}`;
+    div.querySelector("time").textContent = formatTimestampWithSeconds(i.occurredAt);
+    root.appendChild(div);
+  });
+}
 
 function normalizeSearch(value) { return String(value || "").toLowerCase().replace(/[^a-z0-9@.]+/g, " ").trim(); }
 function operationalLabel(value) { return ({ registered: "Registered", checked_in: "Checked In", completed: "Completed" })[value] || "Registered"; }
+function adminDisplayName(profile, user) { return [profile?.firstName, profile?.lastName].filter(Boolean).join(" ").trim() || profile?.name || profile?.displayName || profile?.email || user?.email || user?.uid || "Admin"; }
+function adminName(uid, fallback = "") { return fallback || adminDirectory.get(uid) || uid || ""; }
 function outcomeLabel(value) { return OUTCOMES[value] || value || ""; }
 function timeOnly(value) { const d = toDate(value); return d ? d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : ""; }
 
@@ -531,6 +746,7 @@ function senatorName(id) { return SENATORS.find((senator) => senator.id === id)?
 function slotLabel(id) { return TIME_SLOTS.find((slot) => slot.id === id)?.label || id || ""; }
 function toDate(value) { const date = value ? new Date(value) : null; return date && !Number.isNaN(date.getTime()) ? date : null; }
 function formatTimestamp(value) { const date = toDate(value); return date ? date.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }) : ""; }
+function formatTimestampWithSeconds(value) { const date = toDate(value); return date ? date.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "medium" }) : ""; }
 function formatDate(value) { const date = value ? new Date(`${value}T00:00:00`) : null; return date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString("en-US", { dateStyle: "medium" }) : ""; }
 function formatDriveDate(value) { return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", { dateStyle: "long" }); }
 function setText(id, value) { const element = $(id); if (element) element.textContent = value; }
