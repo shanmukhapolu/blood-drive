@@ -18,30 +18,24 @@ service cloud.firestore {
 
     match /checkins/{registrationId} {
       allow read: if canCheckin();
-      allow create: if canCheckin()
-        && request.resource.data.keys().hasOnly(["registrationId", "status", "checkedInAt", "checkedInBy", "updatedAt", "updatedBy"])
-        && request.resource.data.registrationId == registrationId
-        && request.resource.data.status == "checked_in"
-        && request.resource.data.checkedInAt == request.time
-        && request.resource.data.updatedAt == request.time
-        && request.resource.data.checkedInBy == request.auth.uid
-        && request.resource.data.updatedBy == request.auth.uid;
-      allow update: if canCheckin()
-        && resource.data.status == "checked_in"
-        && request.resource.data.status == "completed"
-        && request.resource.data.checkedInAt == resource.data.checkedInAt
-        && request.resource.data.checkedInBy == resource.data.checkedInBy
-        && request.resource.data.checkedOutAt == request.time
-        && request.resource.data.updatedAt == request.time
-        && request.resource.data.checkedOutBy == request.auth.uid
-        && request.resource.data.updatedBy == request.auth.uid
-        && validOutcome(request.resource.data.outcome)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "checkedOutAt", "checkedOutBy", "outcome", "updatedAt", "updatedBy"]);
+      allow create, update: if canCheckin();
       allow delete: if isAdmin();
     }
 
+    match /checkinActivity/{activityId} {
+      allow read: if canCheckin();
+      allow create: if canCheckin();
+      allow update, delete: if isAdmin();
+    }
+
+    match /registrationGuards/{guardId} {
+      allow read, create: if true;
+      allow update, delete: if isAdmin();
+    }
+
     match /slotCounts/{slotDocId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isAdmin() || request.auth == null;
     }
 
     match /admins/{adminId} {

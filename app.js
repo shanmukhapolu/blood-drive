@@ -320,72 +320,66 @@ export function validateForm(formEl, currentSelectedSlotId) {
   );
 
   let valid = true;
+  let firstInvalidFieldId = null;
+  const fail = (fieldId, message) => {
+    setError(fieldId, message);
+    if (!firstInvalidFieldId) firstInvalidFieldId = fieldId;
+    valid = false;
+  };
 
   if (!firstName || firstName.length < 2) {
-    setError("firstName", "Enter the student's first name.");
-    valid = false;
+    fail("firstName", "Enter the student's first name.");
   }
 
   if (!lastName || lastName.length < 2) {
-    setError("lastName", "Enter the student's last name.");
-    valid = false;
+    fail("lastName", "Enter the student's last name.");
   }
 
   if (!studentEmail || !isLikelyValidEmail(studentEmail)) {
-    setError("studentEmail", "Enter a valid email address.");
-    valid = false;
+    fail("studentEmail", "Enter a valid email address.");
   } else if (isSchoolDomainEmail(studentEmail)) {
-    setError("studentEmail", "Please use a personal email address, not your school email.");
-    valid = false;
+    fail("studentEmail", "Please use a personal email address, not your school email.");
   }
 
   if (!parentEmail || !isLikelyValidEmail(parentEmail)) {
-    setError("parentEmail", "Enter a valid parent/guardian email address.");
-    valid = false;
+    fail("parentEmail", "Enter a valid parent/guardian email address.");
   }
 
   if (!phone || phone.replace(/\D/g, "").length !== 10) {
-    setError("phone", "Enter a valid 10-digit phone number.");
-    valid = false;
+    fail("phone", "Enter a valid 10-digit phone number.");
   } else {
     formEl.phone.value = phone;
   }
 
   const eligibility = validateEligibility(dob);
   if (eligibility.status === "invalid") {
-    setError("dob", "Enter a valid date of birth.");
-    valid = false;
+    fail("dob", "Enter a valid date of birth.");
   } else if (eligibility.status === "ineligible") {
-    setError("dob", "You must be at least 16 years old on the blood-drive date.");
-    valid = false;
+    fail("dob", "You must be at least 16 years old on the blood-drive date.");
   }
 
   if (!/^\d{9}$/.test(studentId)) {
-    setError("studentId", "Enter your 9-digit student ID number.");
-    valid = false;
+    fail("studentId", "Enter your 9-digit student ID number.");
   }
 
   if (!eligAge) {
-    setError("eligAge", "You must confirm this to register.");
-    valid = false;
+    fail("eligAge", "You must confirm this to register.");
   }
   if (!eligNoSport) {
-    setError("eligNoSport", "You must confirm this to register.");
-    valid = false;
+    fail("eligNoSport", "You must confirm this to register.");
   }
 
   if (selectedSenators.length === 0) {
-    setError("senators", "Select at least one senator who assisted you.");
-    valid = false;
+    fail("senators", "Select at least one senator who assisted you.");
   }
 
   if (!currentSelectedSlotId) {
-    setError("slot", "Choose an available appointment time.");
-    valid = false;
+    fail("slot", "Choose an available appointment time.");
   }
 
   return {
     valid,
+    firstInvalidFieldId,
     eligibility,
     payload: {
       firstName,
@@ -417,9 +411,12 @@ export function validateForm(formEl, currentSelectedSlotId) {
 async function reserveSlotAndCreateRegistration(payload) {
   const slotRef = doc(db, "slotCounts", slotDocId(payload.appointmentSlotId));
   const registrationRef = doc(collection(db, "registrations"));
+  const studentGuardRef = doc(db, "registrationGuards", `studentId_${payload.studentId}`);
+  const emailGuardRef = doc(db, "registrationGuards", `studentEmail_${encodeURIComponent(payload.studentEmail.toLowerCase())}`);
 
   await runTransaction(db, async (tx) => {
-    const slotSnap = await tx.get(slotRef);
+    const [slotSnap, studentGuardSnap, emailGuardSnap] = await Promise.all([tx.get(slotRef), tx.get(studentGuardRef), tx.get(emailGuardRef)]);
+    if (studentGuardSnap.exists() || emailGuardSnap.exists()) throw new Error("DUPLICATE_REGISTRATION");
     if (!slotSnap.exists()) {
       const slot = TIME_SLOTS.find((s) => s.id === payload.appointmentSlotId);
       if (!slot) {
@@ -434,6 +431,8 @@ async function reserveSlotAndCreateRegistration(payload) {
         count: 1,
       });
       tx.set(registrationRef, buildRegistrationRecord(payload));
+      tx.set(studentGuardRef, { registrationId: registrationRef.id, createdAt: serverTimestamp() });
+      tx.set(emailGuardRef, { registrationId: registrationRef.id, createdAt: serverTimestamp() });
       return;
     }
     const slotData = slotSnap.data();
@@ -446,6 +445,8 @@ async function reserveSlotAndCreateRegistration(payload) {
 
     tx.update(slotRef, { count: slotData.count + 1 });
     tx.set(registrationRef, buildRegistrationRecord(payload));
+    tx.set(studentGuardRef, { registrationId: registrationRef.id, createdAt: serverTimestamp() });
+    tx.set(emailGuardRef, { registrationId: registrationRef.id, createdAt: serverTimestamp() });
   });
 
   return registrationRef.id;
@@ -482,8 +483,9 @@ async function submitRegistration(event) {
   clearAllErrors();
   setError("submit", "");
 
-  const { valid, eligibility, payload } = validateForm(form, selectedSlotId);
+  const { valid, firstInvalidFieldId, eligibility, payload } = validateForm(form, selectedSlotId);
   if (!valid) {
+    scrollToField(firstInvalidFieldId);
     announce("Please fix the highlighted fields before submitting.");
     return;
   }
@@ -516,6 +518,13 @@ async function submitRegistration(event) {
   }
 }
 
+function scrollToField(fieldId) {
+  const target = document.getElementById(fieldId) || document.getElementById(`err-${fieldId}`);
+  if (!target) return;
+  target.scrollIntoView({ behavior: "smooth", block: "center" });
+  if (typeof target.focus === "function") target.focus({ preventScroll: true });
+}
+
 function handleSubmissionError(error) {
   // Never surface raw Firebase error internals to the student.
   const code = error && (error.code || error.message);
@@ -527,6 +536,12 @@ function handleSubmissionError(error) {
       "Registration could not be saved because Firebase permissions blocked the request. Please ask the organizers to deploy the latest Firestore rules."
     );
     announce("Registration could not be saved because Firebase permissions blocked the request.");
+    return;
+  }
+
+  if (code === "DUPLICATE_REGISTRATION") {
+    setError("submit", "Looks like you already completed the registration. Please check your email for a confirmation email.");
+    announce("Looks like you already completed the registration. Please check your email for a confirmation email.");
     return;
   }
 

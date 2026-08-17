@@ -35,7 +35,7 @@
           <h1>Registrations</h1>
           <p class="muted">Full-width searchable, filterable registration view. Click a row for a readable detail panel.</p>
         </div>
-        <button id="refresh" class="primary" type="button">Refresh</button>
+        <div class="header-actions"><button id="export-all-csv" class="secondary" type="button">Export CSV</button><button id="export-all-pdf" class="secondary" type="button">Export PDF</button><button id="refresh" class="primary" type="button">Refresh</button></div>
       </div>
       <div class="toolbar registrations-toolbar">
         <div class="wide-field">
@@ -67,6 +67,7 @@
         </div>
       </div>
     </section>
+    <section class="panel"><div class="summary-line"><div><p class="eyebrow">Appointment capacity</p><h2>Timeslot capacity</h2><p class="muted">Change capacity for individual 15-minute appointment slots without editing code.</p></div></div><div id="slot-capacity-grid" class="slot-capacity-grid"></div></section>
     <section class="panel">
       <div class="summary-line">
         <strong id="counts">Loading registrations…</strong>
@@ -92,7 +93,7 @@
               <th>Operational Status</th>
               <th>Check-in Time</th>
               <th>Check-out Time</th>
-              <th>Outcome</th>
+              <th>Outcome</th><th>Actions</th>
             </tr>
           </thead>
           <tbody id="rows"></tbody>

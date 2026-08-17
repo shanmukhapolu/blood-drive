@@ -749,3 +749,162 @@ th[data-sort] {
 .big-action { min-height: 58px; font-size: 1rem; letter-spacing: 0.04em; }
 .activity-row { padding: 14px; border: 1px solid var(--admin-border); border-radius: 14px; background: #fff; }
 @media (max-width: 720px) { .checkin-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } .checkin-card { align-items: stretch; flex-direction: column; } .checkin-actions { min-width: 0; } }
+
+.header-actions,
+.table-actions,
+.modal-actions-stack {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.small-button {
+  min-height: 34px;
+  padding: 7px 11px;
+  border-radius: 10px;
+  font-size: 0.82rem;
+}
+
+.danger,
+.danger-lite {
+  color: var(--admin-danger);
+  background: var(--admin-danger-bg);
+  border: 1px solid rgba(194, 42, 63, 0.18);
+}
+
+textarea {
+  width: 100%;
+  min-height: 90px;
+  border: 1px solid var(--admin-border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font: inherit;
+  resize: vertical;
+}
+
+.slot-capacity-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.slot-capacity-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: end;
+  padding: 12px;
+  border: 1px solid var(--admin-border);
+  border-radius: 16px;
+  background: var(--admin-surface-soft);
+}
+
+.slot-capacity-item label {
+  grid-column: 1 / -1;
+}
+
+.checkin-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.95fr) minmax(420px, 1.4fr);
+  gap: 18px;
+}
+
+.checkin-layout .nav,
+.checkin-layout #error {
+  grid-column: 1 / -1;
+}
+
+.compact-hero h1 {
+  font-size: clamp(1.35rem, 2vw, 1.85rem);
+}
+
+.checkin-search {
+  min-height: 54px;
+  border-radius: 16px;
+  font-size: 1.02rem;
+}
+
+.checkin-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.checkin-summary div,
+.checkin-card,
+.activity-card {
+  border: 1px solid var(--admin-border);
+  border-radius: 18px;
+  background: linear-gradient(180deg, #fff, var(--admin-surface-soft));
+  padding: 14px;
+}
+
+.checkin-summary b {
+  display: block;
+  color: var(--admin-blue-deep);
+  font-family: var(--admin-display);
+  font-size: 1.55rem;
+}
+
+.checkin-summary span {
+  color: var(--admin-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.checkin-results {
+  display: grid;
+  gap: 12px;
+}
+
+.checkin-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+}
+
+.checkin-card h2 {
+  margin-bottom: 4px;
+}
+
+.checkin-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.big-action {
+  min-height: 48px;
+  border-radius: 14px;
+}
+
+.expected-panel {
+  grid-row: span 2;
+}
+
+.activity-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+}
+
+.activity-card p {
+  margin: 4px 0 0;
+}
+
+.activity-card time {
+  color: var(--admin-muted);
+  font-size: 0.86rem;
+  white-space: nowrap;
+}
+
+@media (max-width: 980px) {
+  .checkin-layout,
+  .checkin-summary {
+    grid-template-columns: 1fr;
+  }
+}
