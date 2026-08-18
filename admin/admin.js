@@ -951,8 +951,13 @@ function setDisabled(id, disabled) { const element = $(id); if (element) element
 function showError(message) { setText("error", message); setText("counts", "Unable to load registrations"); }
 function startOfDay(date) { return new Date(date.getFullYear(), date.getMonth(), date.getDate()); }
 function addDays(date, days) { const result = new Date(date); result.setDate(result.getDate() + days); return result; }
-function isoDate(date) { return date.toISOString().slice(0, 10); }
-function shortDate(date) { return date.toLocaleDateString("en-US", { month: "short", day: "numeric" }); }
+function isoDate(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}function shortDate(date) { return date.toLocaleDateString("en-US", { month: "short", day: "numeric" }); }
 function dateRange(start, end) { const dates = []; for (let d = startOfDay(start); d <= end; d = addDays(d, 1)) dates.push(new Date(d)); return dates; }
 function countSince(records, start, end) { return records.filter((record) => { const date = toDate(record.createdAt); return date && date >= start && date < end; }).length; }
 function percent(value, total) { return total ? `${Math.round((value / total) * 100)}%` : "0%"; }
