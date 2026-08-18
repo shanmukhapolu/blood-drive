@@ -5,6 +5,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   limit,
   onSnapshot,
@@ -23,6 +24,8 @@ const ADMINS_COLLECTION = "admins";
 const OUTCOMES = { single: "Single Donation", double: "Double Donation", deferred: "Deferred", other: "Did Not Donate / Other" };
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 const DRIVE_DATE = new Date(`${CONFIG.bloodDriveDate}T00:00:00`);
+const DRIVE_TIME_ZONE = CONFIG.timeZone || "America/New_York";
+const DRIVE_TIME_ZONE_LABEL = CONFIG.timeZoneLabel || "EST";
 const REGISTRATION_START = new Date("2026-08-15T00:00:00");
 const $ = (id) => document.getElementById(id);
 
@@ -54,10 +57,39 @@ requireAdmin({
 
     if (location.pathname.includes("statistics")) {
       initStatisticsPage();
+      return;
+    }
+
+    if (location.pathname.includes("settings")) {
+      initSettingsPage();
     }
   },
   onDenied: (message) => showError(message),
 });
+
+async function initSettingsPage() {
+  await loadSlotCapacities();
+  renderSlotCapacityEditor();
+  const ref = doc(db, "driveSettings", CONFIG.bloodDriveId);
+  try {
+    const snap = await getDoc(ref);
+    const data = snap.exists() ? snap.data() : {};
+    setInputValue("setting-event-name", data.eventName || CONFIG.eventName);
+    setInputValue("setting-date", data.bloodDriveDate || CONFIG.bloodDriveDate);
+    setInputValue("setting-location", data.location || CONFIG.location);
+    setInputValue("setting-timezone", data.timeZoneLabel || DRIVE_TIME_ZONE_LABEL);
+  } catch {
+    setInputValue("setting-event-name", CONFIG.eventName);
+    setInputValue("setting-date", CONFIG.bloodDriveDate);
+    setInputValue("setting-location", CONFIG.location);
+    setInputValue("setting-timezone", DRIVE_TIME_ZONE_LABEL);
+  }
+  $("save-drive-settings")?.addEventListener("click", async () => {
+    await setDoc(ref, { eventName: $("setting-event-name")?.value || CONFIG.eventName, bloodDriveDate: $("setting-date")?.value || CONFIG.bloodDriveDate, location: $("setting-location")?.value || CONFIG.location, timeZoneLabel: $("setting-timezone")?.value || DRIVE_TIME_ZONE_LABEL, updatedAt: serverTimestamp() }, { merge: true });
+    setText("settings-message", "Settings saved.");
+  });
+}
+function setInputValue(id, value) { const el = $(id); if (el) el.value = value || ""; }
 
 function initShell(user, profile) {
   renderNavigation(profile);
@@ -70,7 +102,7 @@ function initShell(user, profile) {
 function renderNavigation(profile) {
   document.querySelectorAll(".nav").forEach((nav) => {
     nav.textContent = "";
-    const adminLinks = [["Dashboard", "/admin/"], ["Registrations", "/admin/registrations.html"], ["Check-In", "/admin/checkin/"], ["Statistics", "/admin/statistics.html"]];
+    const adminLinks = [["Dashboard", "/admin/"], ["Registrations", "/admin/registrations.html"], ["Check-In", "/admin/checkin/"], ["Statistics", "/admin/statistics.html"], ["Settings", "/admin/settings.html"]];
     const checkinLinks = [["Check-In", "/admin/checkin/"], ["Recent Activity", "/admin/checkin/activity/"]];
     const links = isEnabledAdmin(profile) ? adminLinks : checkinLinks;
     let current = location.pathname.split("/").pop() || "index.html";
@@ -95,7 +127,6 @@ async function initRegistrationsPage() {
 
   await Promise.all([loadAdminDirectory(), loadSlotCapacities()]);
   registrations = await loadRegistrations();
-  renderSlotCapacityEditor();
   renderRegistrations();
 }
 
@@ -105,6 +136,7 @@ async function initStatisticsPage() {
 
   registrations = await loadRegistrations();
   renderStats(registrations);
+  $("generate-report")?.addEventListener("click", () => openBloodDriveReport(registrations));
 }
 
 async function loadAdminDirectory() {
@@ -191,7 +223,6 @@ function bindFilters() {
     setText("counts", "Refreshing registrations…");
     registrations = await loadRegistrations();
     await loadSlotCapacities();
-    renderSlotCapacityEditor();
     renderRegistrations();
   });
 }
@@ -398,7 +429,9 @@ function openPrintableExport(records) {
   const win = window.open("", "_blank");
   if (!win) return;
   const rows = exportRows(records);
-  win.document.write(`<title>Registration Export</title><style>body{font-family:Arial,sans-serif;padding:24px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:6px;font-size:12px}</style><h1>Registration Export</h1><table><thead><tr>${Object.keys(rows[0] || {}).map((h) => `<th>${escapeHtml(h)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${Object.values(row).map((v) => `<td>${escapeHtml(v)}</td>`).join("")}</tr>`).join("")}</tbody></table>`);
+  const style = `<style>body{font-family:Inter,Arial,sans-serif;margin:24px;color:#131a24}h1{margin:0 0 6px}.muted{color:#61707f}.card{border:1px solid #dde3ec;border-radius:18px;padding:18px;margin:14px 0;background:#f8fafc}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.item{background:#fff;border:1px solid #e5eaf1;border-radius:12px;padding:10px}.label{font-size:10px;text-transform:uppercase;color:#61707f;font-weight:700}.value{font-weight:650;word-break:break-word}table{border-collapse:collapse;width:100%;font-size:9px;table-layout:fixed}td,th{border:1px solid #ccd5e1;padding:4px;word-break:break-word;vertical-align:top}th{background:#eef2f7;font-size:8px;text-transform:uppercase}@media print{@page{size:landscape;margin:.35in}body{margin:0}.card{break-inside:avoid}}</style>`;
+  const body = records.length === 1 ? `<section class="card"><h1>Registration Card</h1><p class="muted">${escapeHtml(CONFIG.eventName)} · ${escapeHtml(formatDriveDate(CONFIG.bloodDriveDate))}</p><div class="grid">${Object.entries(rows[0] || {}).map(([k,v]) => `<div class="item"><div class="label">${escapeHtml(k)}</div><div class="value">${escapeHtml(v)}</div></div>`).join("")}</div></section>` : `<h1>Registration Export</h1><p class="muted">${records.length} registrations · ${escapeHtml(CONFIG.eventName)}</p><table><thead><tr>${Object.keys(rows[0] || {}).map((h) => `<th>${escapeHtml(h)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${Object.values(row).map((v) => `<td>${escapeHtml(v)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+  win.document.write(`<title>Registration Export</title>${style}${body}`);
   win.document.close();
   win.print();
 }
@@ -471,49 +504,59 @@ async function initCheckinPage(user, profile) {
   onSnapshot(collection(db, CHECKINS_COLLECTION), (snap) => {
     checkins = new Map(snap.docs.map((d) => [d.id, serialize({ id: d.id, ...d.data() })]));
     markLateRegistrations(regs, checkins, user.uid, actorName);
-    renderSummary(summary, regs, checkins);
+    renderOperationsDashboard(summary, regs, checkins, user);
     renderExpectedSoon(expected, regs, checkins, user);
     renderCheckinResults(search?.value || "", regs, checkins, results, user);
   }, () => showError("Could not subscribe to check-in updates."));
   search?.addEventListener("input", () => renderCheckinResults(search.value, regs, checkins, results, user));
-  setInterval(() => { markLateRegistrations(regs, checkins, user.uid, actorName); renderExpectedSoon(expected, regs, checkins, user); }, 30000);
+  setInterval(() => { markLateRegistrations(regs, checkins, user.uid, actorName); renderOperationsDashboard(summary, regs, checkins, user); renderExpectedSoon(expected, regs, checkins, user); }, 30000);
 }
 
-function renderSummary(root, regs, checkins) {
-  if (!root) return;
-  const vals = { expected: regs.length, checked: 0, current: 0, completed: 0, late: 0 };
-  checkins.forEach((c) => { if (c.status === "checked_in") { vals.checked++; vals.current++; } if (c.status === "completed") { vals.checked++; vals.completed++; } if (c.status === "late") vals.late++; });
-  root.innerHTML = `<div><b>${vals.expected}</b><span>Expected</span></div><div><b>${vals.checked}</b><span>Checked In</span></div><div><b>${vals.current}</b><span>Currently Checked In</span></div><div><b>${vals.completed}</b><span>Completed</span></div><div><b>${vals.late}</b><span>Late</span></div>`;
-}
 
 function renderExpectedSoon(root, regs, checkins, user) {
   if (!root) return;
   const nowSlot = currentSlotId(new Date());
-  const expected = regs.filter((r) => r.appointmentSlotId === nowSlot && !["checked_in", "completed"].includes(checkins.get(r.id)?.status));
+  const next = nextSlotId(new Date());
+  const relevant = new Set([nowSlot, next].filter(Boolean));
+  const expected = regs.filter((r) => relevant.has(r.appointmentSlotId) && !["checked_in", "completed"].includes(checkins.get(r.id)?.status)).sort((a,b) => String(a.appointmentSlotId).localeCompare(String(b.appointmentSlotId)));
   root.textContent = "";
-  if (!expected.length) { const empty = document.createElement("p"); empty.className = "muted"; empty.textContent = "No students are expected in the current 15-minute window."; root.appendChild(empty); return; }
+  if (!expected.length) { const empty = document.createElement("p"); empty.className = "muted"; empty.textContent = "No students are expected in the current or next appointment window."; root.appendChild(empty); return; }
   expected.forEach((r) => root.appendChild(checkinCard({ ...r, checkin: checkins.get(r.id) || { status: "registered" } }, user)));
 }
 
 function currentSlotId(now) {
-  const minutes = now.getHours() * 60 + now.getMinutes();
+  const parts = timeParts(now);
+  const minutes = parts.hour * 60 + parts.minute;
   const rounded = minutes - (minutes % 15);
-  return `${String(Math.floor(rounded / 60)).padStart(2, "0")}${String(rounded % 60).padStart(2, "0")}`;
+  const id = `${String(Math.floor(rounded / 60)).padStart(2, "0")}${String(rounded % 60).padStart(2, "0")}`;
+  return TIME_SLOTS.some((slot) => slot.id === id) ? id : null;
+}
+function nextSlotId(now) {
+  const parts = timeParts(now);
+  const minutes = parts.hour * 60 + parts.minute;
+  return TIME_SLOTS.find((slot) => slotMinutes(slot.id) > minutes)?.id || null;
+}
+function timeParts(date) {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: DRIVE_TIME_ZONE, hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(date);
+  return { hour: Number(parts.find((p) => p.type === "hour")?.value || 0), minute: Number(parts.find((p) => p.type === "minute")?.value || 0) };
 }
 
 async function markLateRegistrations(regs, checkins, uid, actorName) {
   const now = new Date();
-  const late = regs.filter((r) => !checkins.has(r.id) && slotEndTime(r.appointmentSlotId) < now).slice(0, 20);
+  const late = regs.filter((r) => !checkins.has(r.id) && slotEndTime(r.appointmentSlotId) < (timeParts(now).hour * 60 + timeParts(now).minute) * 60 * 1000).slice(0, 20);
   await Promise.all(late.map((r) => setDoc(doc(db, CHECKINS_COLLECTION, r.id), { registrationId: r.id, status: "late", lateAt: serverTimestamp(), updatedAt: serverTimestamp(), updatedBy: uid, updatedByName: actorName }, { merge: true })
     .then(() => setDoc(doc(collection(db, CHECKIN_ACTIVITY_COLLECTION)), { registrationId: r.id, action: "late", actorUid: uid, actorName, occurredAt: serverTimestamp() }))
     .catch(() => {})));
 }
 
 function slotEndTime(slotId) {
-  const hour = Number(String(slotId).slice(0, 2));
-  const minute = Number(String(slotId).slice(2));
-  return new Date(`${CONFIG.bloodDriveDate}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00`).getTime() + 15 * 60 * 1000;
+  const now = new Date();
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: DRIVE_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+  if (today < CONFIG.bloodDriveDate) return Infinity;
+  if (today > CONFIG.bloodDriveDate) return 0;
+  return (slotMinutes(slotId) + 15) * 60 * 1000;
 }
+function slotMinutes(slotId) { return Number(String(slotId).slice(0, 2)) * 60 + Number(String(slotId).slice(2)); }
 
 function renderCheckinResults(term, regs, checkins, root, user) {
   if (!root) return;
@@ -532,7 +575,7 @@ function checkinCard(record, user) {
   card.innerHTML = `<div><h2></h2><p></p><p></p></div><div class="checkin-actions"></div>`;
   card.querySelector("h2").textContent = `${record.firstName || ""} ${record.lastName || ""}`.trim() || "Unnamed student";
   card.querySelectorAll("p")[0].textContent = `Student ID: ${record.studentId || "Not provided"} · Appointment: ${slotLabel(record.appointmentSlotId) || "Not selected"}`;
-  card.querySelectorAll("p")[1].textContent = `${operationalLabel(status)}${record.checkin?.checkedInAt ? ` · Checked in ${timeOnly(record.checkin.checkedInAt)}` : ""}`;
+  card.querySelectorAll("p")[1].textContent = `${operationalLabel(status)}${record.checkin?.checkedInAt ? ` · Checked in ${timeOnly(record.checkin.checkedInAt)}` : ""}${isLateArrival(record) ? " · Status: Late" : ""}`;
   const actions = card.querySelector(".checkin-actions");
   if (status === "registered" || status === "late") actions.append(actionButton(status === "late" ? "CHECK IN LATE" : "CHECK IN", () => transitionCheckin(record.id, "checkin", user.uid, adminDisplayName(null, user))));
   else if (status === "checked_in") actions.append(actionButton("CHECK OUT", () => showCheckout(record, actions, user.uid, adminDisplayName(null, user))));
@@ -558,12 +601,69 @@ async function transitionCheckin(id, action, uid, actorName, outcome) {
         tx.set(activityRef, { registrationId: id, action: "checkin", actorUid: uid, actorName, occurredAt: serverTimestamp() });
       } else {
         tx.set(ref, { ...base, status: "completed", checkedOutAt: serverTimestamp(), checkedOutBy: uid, checkedOutByName: actorName, outcome }, { merge: true });
-        tx.set(activityRef, { registrationId: id, action: "checkout", actorUid: uid, outcome, occurredAt: serverTimestamp() });
+        tx.set(activityRef, { registrationId: id, action: "checkout", actorUid: uid, actorName, outcome, occurredAt: serverTimestamp() });
       }
     });
     setText("checkin-message", action === "checkin" ? "Student checked in." : "Check-out completed.");
   } catch { setText("checkin-message", "Another staff member already updated this registration. The live status has refreshed."); }
 }
+
+function mergedRecords(regs, checkins) { return regs.map((r) => ({ ...r, checkin: checkins.get(r.id) || { status: "registered" } })); }
+function computeOpsStats(regs, checkins) {
+  const records = mergedRecords(regs, checkins);
+  const counts = { expected: records.length, checkedIn: 0, checkedOut: 0, notArrived: 0, donated: 0, deferred: 0, other: 0, single: 0, double: 0, totalUnits: 0 };
+  for (const r of records) {
+    const status = r.checkin?.status;
+    const outcome = r.checkin?.outcome;
+    if (status === "checked_in") counts.checkedIn += 1;
+    if (status === "completed") counts.checkedOut += 1;
+    if (status === "completed" && outcome === "single") { counts.single += 1; counts.donated += 1; counts.totalUnits += 1; }
+    if (status === "completed" && outcome === "double") { counts.double += 1; counts.donated += 1; counts.totalUnits += 2; }
+    if (status === "completed" && outcome === "deferred") counts.deferred += 1;
+    if (status === "completed" && outcome === "other") counts.other += 1;
+  }
+  counts.notArrived = Math.max(0, counts.expected - counts.checkedIn - counts.checkedOut);
+  counts.rates = { checkin: percent(counts.checkedIn, counts.expected), checkout: percent(counts.checkedOut, counts.expected), notArrived: percent(counts.notArrived, counts.expected), donation: percent(counts.donated, counts.checkedOut), deferral: percent(counts.deferred, counts.checkedOut), single: percent(counts.single, counts.donated), double: percent(counts.double, counts.donated) };
+  return counts;
+}
+function slotStats(slotId, regs, checkins) {
+  const slotRegs = regs.filter((r) => r.appointmentSlotId === slotId);
+  return computeOpsStats(slotRegs, checkins);
+}
+function renderOperationsDashboard(root, regs, checkins, user) {
+  if (!root) return;
+  const stats = computeOpsStats(regs, checkins);
+  const now = new Date();
+  const current = currentSlotId(now);
+  const next = nextSlotId(now);
+  root.textContent = "";
+  root.append(statGrid([["Expected", stats.expected, stats.rates.checkin + " check-in"], ["Checked In", stats.checkedIn, "Currently on site"], ["Checked Out", stats.checkedOut, stats.rates.checkout + " of expected"], ["Not Arrived", stats.notArrived, stats.rates.notArrived], ["Donated", stats.donated, stats.rates.donation + " of checkout"], ["Deferred", stats.deferred, stats.rates.deferral], ["Total Units", stats.totalUnits, `${stats.single} single + ${stats.double} double`]]));
+  root.append(attendancePanel(stats));
+  root.append(appointmentNowPanel("Current Appointment", current, regs, checkins));
+  root.append(appointmentNowPanel("Next Appointment", next, regs, checkins, "No upcoming appointments."));
+  root.append(donationPanel(stats));
+  root.append(appointmentOverview(regs, checkins));
+}
+function attendancePanel(stats) {
+  const panel = document.createElement("section"); panel.className = "ops-card ops-wide";
+  const total = Math.max(1, stats.expected); let a = 0;
+  const colors = [["Not Arrived", stats.notArrived, "#cbd5e1"], ["Checked In", stats.checkedIn, "#0e60ab"], ["Checked Out", stats.checkedOut, "#1f6b42"]];
+  const stops = colors.map(([,v,c]) => { const s=a; a += (v/total)*360; return `${c} ${s}deg ${a}deg`; }).join(", ");
+  panel.innerHTML = `<h2>Attendance</h2><div class="donut" aria-label="Attendance chart"></div>`;
+  panel.querySelector(".donut").style.background = stats.expected ? `conic-gradient(${stops})` : "#e5e7eb";
+  panel.append(listElement(colors.map(([l,v]) => `${l} — ${v}`)));
+  return panel;
+}
+function appointmentNowPanel(title, slotId, regs, checkins, empty = "No current appointment.") {
+  const panel = document.createElement("section"); panel.className = "ops-card";
+  const h = document.createElement("h2"); h.textContent = title; panel.appendChild(h);
+  if (!slotId) { const p=document.createElement("p"); p.className="muted"; p.textContent=empty; panel.appendChild(p); return panel; }
+  const s = slotStats(slotId, regs, checkins); const strong=document.createElement("strong"); strong.className="slot-heading"; strong.textContent=slotLabel(slotId); panel.appendChild(strong);
+  panel.append(listElement([`Expected: ${s.expected}`, `Checked In: ${s.checkedIn}`, `Checked Out: ${s.checkedOut}`, `Not Arrived: ${s.notArrived}`])); return panel;
+}
+function donationPanel(stats) { return chartPanel("Donation outcomes", `Donated is successful students; total units are ${stats.single} single + (${stats.double} double × 2).`, [{label:"Donated",value:stats.donated},{label:"Deferred",value:stats.deferred},{label:"Other",value:stats.other},{label:"Single",value:stats.single},{label:"Double",value:stats.double},{label:"Units",value:stats.totalUnits}], [`Donation rate — ${stats.rates.donation}`, `Deferral rate — ${stats.rates.deferral}`, `Single donation percentage — ${stats.rates.single}`, `Double donation percentage — ${stats.rates.double}`], { panelClass: "ops-wide" }); }
+function appointmentOverview(regs, checkins) { const panel=document.createElement("section"); panel.className="panel ops-wide"; panel.append(headingBlock("Appointment overview", "Every configured 15-minute appointment slot.")); const table=document.createElement("table"); table.className="compact-table"; table.innerHTML="<thead><tr><th>Time</th><th>Expected</th><th>Checked In</th><th>Checked Out</th><th>Donated</th><th>Deferred</th><th>Not Arrived</th><th>Donation Rate</th></tr></thead>"; const body=document.createElement("tbody"); TIME_SLOTS.forEach((slot)=>{ const s=slotStats(slot.id, regs, checkins); const tr=document.createElement("tr"); [slot.label,s.expected,s.checkedIn,s.checkedOut,s.donated,s.deferred,s.notArrived,s.rates.donation].forEach(v=>{const td=document.createElement("td"); td.textContent=String(v); tr.appendChild(td);}); body.appendChild(tr); }); table.appendChild(body); panel.appendChild(table); return panel; }
+function isLateArrival(record) { const checked = toDate(record.checkin?.checkedInAt); if (!checked || !record.appointmentSlotId) return false; const p = timeParts(checked); const actual = p.hour * 60 + p.minute; const start = slotMinutes(record.appointmentSlotId); return actual < start || actual >= start + 15; }
 
 async function initActivityPage() {
   const type = $("activity-type"), staff = $("activity-staff"), rows = $("activity-list");
@@ -608,7 +708,7 @@ function operationalLabel(value) { return ({ registered: "Registered", checked_i
 function adminDisplayName(profile, user) { return [profile?.firstName, profile?.lastName].filter(Boolean).join(" ").trim() || profile?.name || profile?.displayName || profile?.email || user?.email || user?.uid || "Admin"; }
 function adminName(uid, fallback = "") { return fallback || adminDirectory.get(uid) || uid || ""; }
 function outcomeLabel(value) { return OUTCOMES[value] || value || ""; }
-function timeOnly(value) { const d = toDate(value); return d ? d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : ""; }
+function timeOnly(value) { const d = toDate(value); return d ? d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: DRIVE_TIME_ZONE, timeZoneName: "short" }).replace(/EDT|GMT[-+]\d+/, DRIVE_TIME_ZONE_LABEL) : ""; }
 
 function renderStats(records) {
   const stats = $("stats");
@@ -639,6 +739,7 @@ function renderStats(records) {
     chartPanel("Registrations over time", "Daily registrations through drive day.", byDate.map((entry) => ({ label: shortDate(entry.date), value: entry.count })), [`Total registrations — ${total}`, `Average registrations per day — ${average}`, `Highest-registration day — ${shortDate(highestDay.date)} (${highestDay.count})`, `Registration growth over time — ${total} cumulative registrations`]),
     chartPanel("Appointment analytics", "Capacity filled for each appointment slot.", slotCounts.map((slot) => ({ label: slot.label, value: slot.count, max: slot.capacity })), appointmentRows(slotCounts), { listClass: "appointment-list" }),
     chartPanel("Senator analytics", "Each listed senator receives credit when multiple senators helped one signup.", senatorRows.map((senator) => ({ label: senator.name, value: senator.count })), senatorLeaderboardRows(senatorRows, total), { panelClass: "senator-panel", chartClass: "diagonal-labels", listClass: "leaderboard-list" }),
+    dayOfStatsPanel(records),
     piePanel("Age split", [{ label: "Exactly 16", value: age16, color: "#0e60ab" }, { label: "17+", value: age17Plus, color: "#47a3f3" }])
   );
 }
@@ -646,12 +747,13 @@ function renderStats(records) {
 function statGrid(items) {
   const grid = document.createElement("div");
   grid.className = "grid stats-grid";
-  items.forEach(([label, value]) => {
+  items.forEach(([label, value, note]) => {
     const card = document.createElement("div");
     card.className = "stat-card";
-    card.innerHTML = `<div class="muted"></div><div class="stat-value"></div>`;
+    card.innerHTML = `<div class="muted"></div><div class="stat-value"></div><div class="stat-note"></div>`;
     card.querySelector(".muted").textContent = label;
     card.querySelector(".stat-value").textContent = String(value);
+    card.querySelector(".stat-note").textContent = note || "";
     grid.appendChild(card);
   });
   return grid;
@@ -736,6 +838,18 @@ function senatorLeaderboardRows(senatorRows, total) {
   }));
 }
 
+function dayOfStatsPanel(records) {
+  const stats = computeOpsStats(records, new Map(records.map((r) => [r.id, r.checkin || { status: "registered" }])));
+  return chartPanel("Day-of blood drive outcomes", "Operational statistics from check-in and checkout records.", [{ label: "Checked In", value: stats.checkedIn }, { label: "Checked Out", value: stats.checkedOut }, { label: "Donated", value: stats.donated }, { label: "Deferred", value: stats.deferred }, { label: "Units", value: stats.totalUnits }], [`Expected — ${stats.expected}`, `Not arrived — ${stats.notArrived} (${stats.rates.notArrived})`, `Donation rate — ${stats.rates.donation}`, `Deferral rate — ${stats.rates.deferral}`, `Total units — ${stats.totalUnits}`]);
+}
+function openBloodDriveReport(records) {
+  const win = window.open("", "_blank"); if (!win) return;
+  const stats = computeOpsStats(records, new Map(records.map((r) => [r.id, r.checkin || { status: "registered" }])));
+  const rows = exportRows(records);
+  win.document.write(`<title>${escapeHtml(CONFIG.eventName)} Report</title><style>body{font-family:Inter,Arial,sans-serif;margin:28px;color:#131a24}.hero{border:1px solid #dde3ec;border-radius:20px;padding:22px;background:#f8fafc}h1{margin:0 0 8px}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:18px 0}.card{border:1px solid #dde3ec;border-radius:14px;padding:12px}.num{font-size:28px;font-weight:800;color:#07345e}table{border-collapse:collapse;width:100%;font-size:10px;table-layout:fixed}th,td{border:1px solid #d8dee8;padding:5px;word-break:break-word}th{background:#eef2f7}@media print{@page{size:landscape;margin:.35in}}</style><section class="hero"><h1>${escapeHtml(CONFIG.eventName)} Outcomes Report</h1><p>${escapeHtml(formatDriveDate(CONFIG.bloodDriveDate))} · ${escapeHtml(CONFIG.location)} · Times shown in ${escapeHtml(DRIVE_TIME_ZONE_LABEL)}</p></section><div class="grid">${[["Expected",stats.expected],["Checked In",stats.checkedIn],["Checked Out",stats.checkedOut],["Donated",stats.donated],["Deferred",stats.deferred],["Single",stats.single],["Double",stats.double],["Total Units",stats.totalUnits]].map(([l,v])=>`<div class="card"><div>${escapeHtml(l)}</div><div class="num">${escapeHtml(v)}</div></div>`).join("")}</div><h2>Rates</h2><p>Check-in ${stats.rates.checkin} · Checkout ${stats.rates.checkout} · Donation ${stats.rates.donation} · Deferral ${stats.rates.deferral}</p><h2>All registrations</h2><table><thead><tr>${Object.keys(rows[0] || {}).map((h) => `<th>${escapeHtml(h)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${Object.values(row).map((v) => `<td>${escapeHtml(v)}</td>`).join("")}</tr>`).join("")}</tbody></table>`);
+  win.document.close(); win.print();
+}
+
 function statusLabel(value) {
   const labels = { required: "Required", not_required: "Not required", unknown: "Unknown / not tracked" };
   const normalized = String(value || "unknown").toLowerCase().replace(/-/g, "_");
@@ -745,10 +859,10 @@ function yesNo(value) { return value ? "Yes" : "No"; }
 function senatorName(id) { return SENATORS.find((senator) => senator.id === id)?.name || id || ""; }
 function slotLabel(id) { return TIME_SLOTS.find((slot) => slot.id === id)?.label || id || ""; }
 function toDate(value) { const date = value ? new Date(value) : null; return date && !Number.isNaN(date.getTime()) ? date : null; }
-function formatTimestamp(value) { const date = toDate(value); return date ? date.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }) : ""; }
-function formatTimestampWithSeconds(value) { const date = toDate(value); return date ? date.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "medium" }) : ""; }
-function formatDate(value) { const date = value ? new Date(`${value}T00:00:00`) : null; return date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString("en-US", { dateStyle: "medium" }) : ""; }
-function formatDriveDate(value) { return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", { dateStyle: "long" }); }
+function formatTimestamp(value) { const date = toDate(value); return date ? date.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: DRIVE_TIME_ZONE }).replace(/EDT|GMT[-+]\d+/, DRIVE_TIME_ZONE_LABEL) : ""; }
+function formatTimestampWithSeconds(value) { const date = toDate(value); return date ? date.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "medium", timeZone: DRIVE_TIME_ZONE }).replace(/EDT|GMT[-+]\d+/, DRIVE_TIME_ZONE_LABEL) : ""; }
+function formatDate(value) { const date = value ? new Date(`${value}T00:00:00`) : null; return date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString("en-US", { dateStyle: "medium", timeZone: DRIVE_TIME_ZONE }) : ""; }
+function formatDriveDate(value) { return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", { dateStyle: "long", timeZone: DRIVE_TIME_ZONE }); }
 function setText(id, value) { const element = $(id); if (element) element.textContent = value; }
 function setDisabled(id, disabled) { const element = $(id); if (element) element.disabled = disabled; }
 function showError(message) { setText("error", message); setText("counts", "Unable to load registrations"); }

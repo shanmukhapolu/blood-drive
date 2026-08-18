@@ -15,6 +15,8 @@ export const CONFIG = {
   bloodDriveDate: "2026-09-04", // ISO date (local, no time component), Friday, Sept 4, 2026
   eventName: "CHS Fall Blood Drive",
   location: "Fieldhouse",
+  timeZone: "America/New_York",
+  timeZoneLabel: "EST",
   slotsStart: "0800", // 8:00 AM
   slotsEnd: "1430", // 2:30 PM
   slotCapacity: 10,
