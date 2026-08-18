@@ -25,7 +25,8 @@ const OUTCOMES = { single: "Single Donation", double: "Double Donation", deferre
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 const DRIVE_DATE = new Date(`${CONFIG.bloodDriveDate}T00:00:00`);
 const DRIVE_TIME_ZONE = CONFIG.timeZone || "America/New_York";
-const DRIVE_TIME_ZONE_LABEL = CONFIG.timeZoneLabel || "EST";
+const DRIVE_TIME_ZONE_LABEL = "EST";
+let activeStatsTab = "registration";
 const REGISTRATION_START = new Date("2026-08-15T00:00:00");
 const $ = (id) => document.getElementById(id);
 
@@ -69,7 +70,6 @@ requireAdmin({
 
 async function initSettingsPage() {
   await loadSlotCapacities();
-  renderSlotCapacityEditor();
   const ref = doc(db, "driveSettings", CONFIG.bloodDriveId);
   try {
     const snap = await getDoc(ref);
@@ -77,19 +77,45 @@ async function initSettingsPage() {
     setInputValue("setting-event-name", data.eventName || CONFIG.eventName);
     setInputValue("setting-date", data.bloodDriveDate || CONFIG.bloodDriveDate);
     setInputValue("setting-location", data.location || CONFIG.location);
-    setInputValue("setting-timezone", data.timeZoneLabel || DRIVE_TIME_ZONE_LABEL);
+    setInputValue("setting-term", data.term || inferTerm(data.eventName || CONFIG.eventName));
+    setInputValue("setting-timezone", DRIVE_TIME_ZONE_LABEL);
+    setInputValue("setting-start-time", hhmmToInputTime(data.slotsStart || CONFIG.slotsStart));
+    setInputValue("setting-end-time", hhmmToInputTime(data.slotsEnd || CONFIG.slotsEnd));
+    setInputValue("setting-slot-interval", data.slotInterval || 15);
   } catch {
     setInputValue("setting-event-name", CONFIG.eventName);
     setInputValue("setting-date", CONFIG.bloodDriveDate);
     setInputValue("setting-location", CONFIG.location);
+    setInputValue("setting-term", inferTerm(CONFIG.eventName));
     setInputValue("setting-timezone", DRIVE_TIME_ZONE_LABEL);
+    setInputValue("setting-start-time", hhmmToInputTime(CONFIG.slotsStart));
+    setInputValue("setting-end-time", hhmmToInputTime(CONFIG.slotsEnd));
+    setInputValue("setting-slot-interval", 15);
   }
+  renderSlotCapacityEditor();
+  ["setting-start-time", "setting-end-time", "setting-slot-interval"].forEach((id) => $(id)?.addEventListener("input", renderSlotCapacityEditor));
   $("save-drive-settings")?.addEventListener("click", async () => {
-    await setDoc(ref, { eventName: $("setting-event-name")?.value || CONFIG.eventName, bloodDriveDate: $("setting-date")?.value || CONFIG.bloodDriveDate, location: $("setting-location")?.value || CONFIG.location, timeZoneLabel: $("setting-timezone")?.value || DRIVE_TIME_ZONE_LABEL, updatedAt: serverTimestamp() }, { merge: true });
-    setText("settings-message", "Settings saved.");
+    await setDoc(ref, { term: $("setting-term")?.value || inferTerm(CONFIG.eventName), eventName: $("setting-event-name")?.value || CONFIG.eventName, bloodDriveDate: $("setting-date")?.value || CONFIG.bloodDriveDate, location: $("setting-location")?.value || CONFIG.location, slotsStart: inputTimeToHHMM($("setting-start-time")?.value) || CONFIG.slotsStart, slotsEnd: inputTimeToHHMM($("setting-end-time")?.value) || CONFIG.slotsEnd, slotInterval: Number($("setting-slot-interval")?.value) || 15, timeZone: "America/New_York", timeZoneLabel: DRIVE_TIME_ZONE_LABEL, updatedAt: serverTimestamp() }, { merge: true });
+    setText("settings-message", "Settings saved. Timezone remains hardcoded to EST.");
   });
 }
 function setInputValue(id, value) { const el = $(id); if (el) el.value = value || ""; }
+function inferTerm(name) { return String(name || "").toLowerCase().includes("spring") ? "spring" : "fall"; }
+function hhmmToInputTime(hhmm) { return `${String(hhmm || "").slice(0, 2)}:${String(hhmm || "").slice(2, 4)}`; }
+function inputTimeToHHMM(value) { return value ? value.replace(":", "") : ""; }
+function settingsSlots() {
+  const start = inputTimeToHHMM($("setting-start-time")?.value) || CONFIG.slotsStart;
+  const end = inputTimeToHHMM($("setting-end-time")?.value) || CONFIG.slotsEnd;
+  const interval = Math.max(5, Number($("setting-slot-interval")?.value) || 15);
+  const toMinutes = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(2));
+  const slots = [];
+  for (let m = toMinutes(start); m <= toMinutes(end); m += interval) {
+    const hour24 = Math.floor(m / 60), minute = m % 60, id = `${String(hour24).padStart(2, "0")}${String(minute).padStart(2, "0")}`;
+    const period = hour24 >= 12 ? "PM" : "AM", hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
+    slots.push({ id, label: `${hour12}:${String(minute).padStart(2, "0")} ${period}`, capacity: CONFIG.slotCapacity });
+  }
+  return slots;
+}
 
 function initShell(user, profile) {
   renderNavigation(profile);
@@ -135,6 +161,7 @@ async function initStatisticsPage() {
   if (stats) stats.innerHTML = '<section class="panel"><p>Loading statistics…</p></section>';
 
   registrations = await loadRegistrations();
+  bindStatsTabs();
   renderStats(registrations);
   $("generate-report")?.addEventListener("click", () => openBloodDriveReport(registrations));
 }
@@ -236,7 +263,9 @@ function renderSlotCapacityEditor() {
   const root = $("slot-capacity-grid");
   if (!root) return;
   root.textContent = "";
-  TIME_SLOTS.forEach((slot) => {
+  const slots = settingsSlots();
+  setText("slot-preview-count", `${slots.length} slots`);
+  slots.forEach((slot) => {
     const data = slotCapacities.get(slot.id) || { capacity: slot.capacity, count: 0 };
     const wrap = document.createElement("div");
     wrap.className = "slot-capacity-item";
@@ -633,16 +662,8 @@ function slotStats(slotId, regs, checkins) {
 function renderOperationsDashboard(root, regs, checkins, user) {
   if (!root) return;
   const stats = computeOpsStats(regs, checkins);
-  const now = new Date();
-  const current = currentSlotId(now);
-  const next = nextSlotId(now);
   root.textContent = "";
-  root.append(statGrid([["Expected", stats.expected, stats.rates.checkin + " check-in"], ["Checked In", stats.checkedIn, "Currently on site"], ["Checked Out", stats.checkedOut, stats.rates.checkout + " of expected"], ["Not Arrived", stats.notArrived, stats.rates.notArrived], ["Donated", stats.donated, stats.rates.donation + " of checkout"], ["Deferred", stats.deferred, stats.rates.deferral], ["Total Units", stats.totalUnits, `${stats.single} single + ${stats.double} double`]]));
-  root.append(attendancePanel(stats));
-  root.append(appointmentNowPanel("Current Appointment", current, regs, checkins));
-  root.append(appointmentNowPanel("Next Appointment", next, regs, checkins, "No upcoming appointments."));
-  root.append(donationPanel(stats));
-  root.append(appointmentOverview(regs, checkins));
+  root.append(statGrid([["Not checked in yet", stats.notArrived], ["Currently checked in", stats.checkedIn], ["Checked out / done", stats.checkedOut], ["Total students expected", stats.expected], ["Single donations", stats.single], ["Double donations", stats.double], ["Total units donated", stats.totalUnits]]));
 }
 function attendancePanel(stats) {
   const panel = document.createElement("section"); panel.className = "ops-card ops-wide";
@@ -710,6 +731,16 @@ function adminName(uid, fallback = "") { return fallback || adminDirectory.get(u
 function outcomeLabel(value) { return OUTCOMES[value] || value || ""; }
 function timeOnly(value) { const d = toDate(value); return d ? d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: DRIVE_TIME_ZONE, timeZoneName: "short" }).replace(/EDT|GMT[-+]\d+/, DRIVE_TIME_ZONE_LABEL) : ""; }
 
+function bindStatsTabs() {
+  document.querySelectorAll("[data-stats-tab]").forEach((button) => {
+    button.addEventListener("click", () => {
+      activeStatsTab = button.dataset.statsTab || "registration";
+      document.querySelectorAll("[data-stats-tab]").forEach((tab) => tab.classList.toggle("active", tab === button));
+      renderStats(registrations);
+    });
+  });
+}
+
 function renderStats(records) {
   const stats = $("stats");
   if (!stats) return;
@@ -734,12 +765,19 @@ function renderStats(records) {
   const slotCounts = TIME_SLOTS.map((slot) => ({ ...slot, count: bySlot[slot.id] || 0 }));
   const senatorRows = SENATORS.map((senator) => ({ ...senator, count: bySenator[senator.id] || 0 })).sort((a, b) => b.count - a.count);
   stats.textContent = "";
+  if (activeStatsTab === "dayof") {
+    stats.append(
+      dayOfOverview(records),
+      dayOfStatsPanel(records),
+      appointmentOverview(records, new Map(records.map((r) => [r.id, r.checkin || { status: "registered" }])))
+    );
+    return;
+  }
   stats.append(
     statGrid([["Total registrations", total], ["Registrations today", todayCount], ["Registrations this week", weekCount], ["Remaining available appointments", Math.max(0, capacity - total)], ["Number of 16-year-olds", age16], ["Number of students 17+", age17Plus]]),
     chartPanel("Registrations over time", "Daily registrations through drive day.", byDate.map((entry) => ({ label: shortDate(entry.date), value: entry.count })), [`Total registrations — ${total}`, `Average registrations per day — ${average}`, `Highest-registration day — ${shortDate(highestDay.date)} (${highestDay.count})`, `Registration growth over time — ${total} cumulative registrations`]),
     chartPanel("Appointment analytics", "Capacity filled for each appointment slot.", slotCounts.map((slot) => ({ label: slot.label, value: slot.count, max: slot.capacity })), appointmentRows(slotCounts), { listClass: "appointment-list" }),
     chartPanel("Senator analytics", "Each listed senator receives credit when multiple senators helped one signup.", senatorRows.map((senator) => ({ label: senator.name, value: senator.count })), senatorLeaderboardRows(senatorRows, total), { panelClass: "senator-panel", chartClass: "diagonal-labels", listClass: "leaderboard-list" }),
-    dayOfStatsPanel(records),
     piePanel("Age split", [{ label: "Exactly 16", value: age16, color: "#0e60ab" }, { label: "17+", value: age17Plus, color: "#47a3f3" }])
   );
 }
@@ -836,6 +874,11 @@ function senatorLeaderboardRows(senatorRows, total) {
     text: `#${index + 1} ${senator.name} — ${senator.count} registrations (${percent(senator.count, total)})`,
     className: "leaderboard-row",
   }));
+}
+
+function dayOfOverview(records) {
+  const stats = computeOpsStats(records, new Map(records.map((r) => [r.id, r.checkin || { status: "registered" }])));
+  return statGrid([["Not checked in yet", stats.notArrived], ["Currently checked in", stats.checkedIn], ["Checked out / done", stats.checkedOut], ["Total expected", stats.expected], ["Single donations", stats.single], ["Double donations", stats.double], ["Total units", stats.totalUnits]]);
 }
 
 function dayOfStatsPanel(records) {
