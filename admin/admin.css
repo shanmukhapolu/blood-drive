@@ -979,3 +979,45 @@ input, select, textarea { border-radius: 14px; background: #fbfcfe; }
   .checkin-layout { grid-template-columns: 1fr; }
   .checkin-summary { position: static; }
 }
+
+.checkin-summary h2 {
+  margin: 0 0 12px;
+  color: var(--admin-blue-deep);
+  font-family: var(--admin-display);
+  font-size: 1.35rem;
+}
+
+.checkin-stat-list {
+  display: grid;
+  margin: 0;
+}
+
+.checkin-summary .checkin-stat-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border: 0;
+  border-bottom: 1px solid var(--admin-border);
+  border-radius: 0;
+  background: transparent;
+}
+
+.checkin-summary .checkin-stat-row:last-child {
+  border-bottom: 0;
+}
+
+.checkin-summary .checkin-stat-row span {
+  color: var(--admin-muted);
+  font-size: 0.88rem;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.checkin-summary .checkin-stat-row b {
+  color: var(--admin-blue-deep);
+  font-family: var(--admin-display);
+  font-size: 1.5rem;
+}

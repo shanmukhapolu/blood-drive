@@ -46,6 +46,8 @@ const errSubmit = document.getElementById("err-submit");
 let selectedSlotId = null;
 let slotAvailability = {}; // { [slotId]: { capacity, count } }
 let submissionInFlight = false;
+let driveConfig = { ...CONFIG };
+let timeSlots = [...TIME_SLOTS];
 
 // ============================================================================
 // Pure helper functions
@@ -93,8 +95,95 @@ function formatDisplayDate(isoDate, { weekday = false } = {}) {
     year: "numeric",
     month: "long",
     day: "numeric",
-    timeZone: CONFIG.timeZone || "America/New_York",
+    timeZone: driveConfig.timeZone || "America/New_York",
   });
+}
+
+
+function formatSlotLabel(hhmm) {
+  const hour24 = Number(String(hhmm).slice(0, 2));
+  const minute = Number(String(hhmm).slice(2));
+  const period = hour24 >= 12 ? "PM" : "AM";
+  const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
+  return `${hour12}:${String(minute).padStart(2, "0")} ${period}`;
+}
+
+function buildTimeSlotsFromSettings(settings = driveConfig) {
+  const interval = Math.max(5, Number(settings.slotInterval) || 15);
+  const toMinutes = (hhmm) => Number(String(hhmm).slice(0, 2)) * 60 + Number(String(hhmm).slice(2));
+  const slots = [];
+  for (let m = toMinutes(settings.slotsStart); m <= toMinutes(settings.slotsEnd); m += interval) {
+    const id = `${String(Math.floor(m / 60)).padStart(2, "0")}${String(m % 60).padStart(2, "0")}`;
+    slots.push({ id, label: formatSlotLabel(id), capacity: settings.slotCapacity || CONFIG.slotCapacity });
+  }
+  return slots;
+}
+
+async function loadDriveSettings() {
+  try {
+    const snap = await getDoc(doc(db, "driveSettings", CONFIG.bloodDriveId));
+    if (!snap.exists()) return;
+    const data = snap.data();
+    driveConfig = {
+      ...CONFIG,
+      term: data.term || inferTerm(data.eventName || CONFIG.eventName),
+      eventName: data.eventName || CONFIG.eventName,
+      bloodDriveDate: data.bloodDriveDate || CONFIG.bloodDriveDate,
+      location: data.location || CONFIG.location,
+      slotsStart: data.slotsStart || CONFIG.slotsStart,
+      slotsEnd: data.slotsEnd || CONFIG.slotsEnd,
+      slotInterval: Number(data.slotInterval) || 15,
+      timeZone: data.timeZone || CONFIG.timeZone,
+      timeZoneLabel: data.timeZoneLabel || CONFIG.timeZoneLabel,
+    };
+    timeSlots = buildTimeSlotsFromSettings(driveConfig);
+  } catch (error) {
+    logRegistrationStep("Drive settings load failed; using bundled defaults", { code: error?.code || error?.message || "unknown" });
+  }
+}
+
+function inferTerm(name) {
+  return String(name || "").toLowerCase().includes("spring") ? "spring" : "fall";
+}
+
+function termLabel() {
+  return driveConfig.term === "spring" ? "spring" : "fall";
+}
+
+function eventRegistrationTitle() {
+  return `${driveConfig.eventName || "Blood Drive"} Registration`;
+}
+
+function renderConfigurableCopy() {
+  const title = eventRegistrationTitle();
+  document.title = title;
+  document.querySelector('meta[name="description"]')?.setAttribute("content", `Register for ${driveConfig.eventName}. Each donation saves 3 lives.`);
+  document.querySelector(".title").textContent = title;
+  const about = document.querySelector(".about-text");
+  if (about) {
+    const lives = document.createElement("strong");
+    lives.textContent = "Each donation saves 3 lives";
+    about.replaceChildren(
+      `The ${driveConfig.eventName} is a chance to make a meaningful impact before the school day is even over. Blood is needed every day for emergency care, surgeries, cancer treatments, trauma patients, and people managing serious illnesses. Because blood cannot be manufactured, hospitals depend on volunteer donors to keep shelves stocked and patients cared for. Your appointment is simple, guided from start to finish, and one donation can help multiple patients. `,
+      lives,
+      "."
+    );
+  }
+  const notice = document.querySelector(".notice p");
+  if (notice) {
+    const eligibility = document.createElement("strong");
+    eligibility.textContent = "Eligibility:";
+    const mustBe = document.createElement("strong");
+    mustBe.textContent = "must be";
+    const mayNot = document.createElement("strong");
+    mayNot.textContent = "may not be";
+    notice.replaceChildren(eligibility, " you must meet the blood drive's requirements to register. Students ", mustBe, " at least 16 years old on the blood-drive date and ", mayNot, ` participating in a ${termLabel()} sport.`);
+  }
+  const slotHelp = document.querySelector("#fieldset-appointment .field:nth-of-type(2) .help");
+  if (slotHelp) slotHelp.textContent = `Appointments run from ${formatSlotLabel(driveConfig.slotsStart)} to ${formatSlotLabel(driveConfig.slotsEnd)}. Please make sure to arrive promptly to ${driveConfig.location} at your time slot.`;
+  const sportLabel = document.querySelector('label[for="eligNoSport"]');
+  if (sportLabel) sportLabel.textContent = `I confirm that I am not participating in a ${termLabel()} sport.`;
+  submitBtn.textContent = `Register for ${driveConfig.eventName || "the Blood Drive"}`;
 }
 
 function isLikelyValidEmail(value) {
@@ -129,14 +218,14 @@ function isSchoolDomainEmail(value) {
 // ============================================================================
 
 function renderHeader() {
-  document.getElementById("fact-date").textContent = formatDisplayDate(CONFIG.bloodDriveDate, { weekday: true });
+  document.getElementById("fact-date").textContent = formatDisplayDate(driveConfig.bloodDriveDate, { weekday: true });
 
-  const firstSlot = TIME_SLOTS[0];
-  const lastSlot = TIME_SLOTS[TIME_SLOTS.length - 1];
+  const firstSlot = timeSlots[0];
+  const lastSlot = timeSlots[timeSlots.length - 1];
   document.getElementById("fact-time").textContent =
     firstSlot && lastSlot ? `${firstSlot.label} – ${lastSlot.label}` : "";
 
-  document.getElementById("fact-location").textContent = CONFIG.location;
+  document.getElementById("fact-location").textContent = driveConfig.location;
 }
 
 function renderSenatorOptions() {
@@ -166,7 +255,7 @@ function renderSenatorOptions() {
 
 function renderAppointmentSlots() {
   slotGrid.textContent = "";
-  for (const slot of TIME_SLOTS) {
+  for (const slot of timeSlots) {
     const availability = slotAvailability[slot.id] || { capacity: slot.capacity, count: 0 };
     const remaining = Math.max(0, availability.capacity - availability.count);
     const isFull = remaining <= 0;
@@ -216,7 +305,7 @@ function renderAppointmentSlots() {
  */
 async function loadSlotAvailability() {
   const results = await Promise.allSettled(
-    TIME_SLOTS.map(async (slot) => {
+    timeSlots.map(async (slot) => {
       const ref = doc(db, "slotCounts", slotDocId(slot.id));
       const snap = await getDoc(ref);
       if (snap.exists()) {
@@ -239,7 +328,7 @@ async function loadSlotAvailability() {
 }
 
 function slotDocId(slotId) {
-  return `${CONFIG.bloodDriveId}_${slotId}`;
+  return `${driveConfig.bloodDriveId}_${slotId}`;
 }
 
 // ============================================================================
@@ -271,10 +360,10 @@ function updateEligibilityUI() {
  * @returns {{status: "invalid"|"ineligible"|"consent-required"|"eligible", age: number|null}}
  */
 export function validateEligibility(dobValue) {
-  const age = calculateAgeOnDate(dobValue, CONFIG.bloodDriveDate);
+  const age = calculateAgeOnDate(dobValue, driveConfig.bloodDriveDate);
   if (age === null) return { status: "invalid", age: null };
-  if (age < CONFIG.minimumAge) return { status: "ineligible", age };
-  if (age === CONFIG.minimumAge) return { status: "consent-required", age };
+  if (age < driveConfig.minimumAge) return { status: "ineligible", age };
+  if (age === driveConfig.minimumAge) return { status: "consent-required", age };
   return { status: "eligible", age };
 }
 
@@ -366,7 +455,7 @@ export function validateForm(formEl, currentSelectedSlotId) {
     fail("eligAge", "You must confirm this to register.");
   }
   if (!eligNoSport) {
-    fail("eligNoSport", "You must confirm this to register.");
+    fail("eligNoSport", `You must confirm you are not participating in a ${termLabel()} sport.`);
   }
 
   if (selectedSenators.length === 0) {
@@ -418,13 +507,13 @@ async function reserveSlotAndCreateRegistration(payload) {
     const [slotSnap, studentGuardSnap, emailGuardSnap] = await Promise.all([tx.get(slotRef), tx.get(studentGuardRef), tx.get(emailGuardRef)]);
     if (studentGuardSnap.exists() || emailGuardSnap.exists()) throw new Error("DUPLICATE_REGISTRATION");
     if (!slotSnap.exists()) {
-      const slot = TIME_SLOTS.find((s) => s.id === payload.appointmentSlotId);
+      const slot = timeSlots.find((s) => s.id === payload.appointmentSlotId);
       if (!slot) {
         throw new Error("SLOT_UNAVAILABLE");
       }
 
       tx.set(slotRef, {
-        bloodDriveId: CONFIG.bloodDriveId,
+        bloodDriveId: driveConfig.bloodDriveId,
         slotId: slot.id,
         label: slot.label,
         capacity: slot.capacity,
@@ -454,10 +543,10 @@ async function reserveSlotAndCreateRegistration(payload) {
 
 function buildRegistrationRecord(payload) {
   return {
-    schemaVersion: CONFIG.schemaVersion,
-    bloodDriveId: CONFIG.bloodDriveId,
-    bloodDriveDate: CONFIG.bloodDriveDate,
-    location: CONFIG.location,
+    schemaVersion: driveConfig.schemaVersion,
+    bloodDriveId: driveConfig.bloodDriveId,
+    bloodDriveDate: driveConfig.bloodDriveDate,
+    location: driveConfig.location,
     firstName: payload.firstName,
     lastName: payload.lastName,
     studentEmail: payload.studentEmail,
@@ -514,7 +603,7 @@ async function submitRegistration(event) {
   } finally {
     submissionInFlight = false;
     submitBtn.disabled = false;
-    submitBtn.textContent = "Register for the Blood Drive";
+    submitBtn.textContent = `Register for ${driveConfig.eventName || "the Blood Drive"}`;
   }
 }
 
@@ -578,15 +667,15 @@ function showConfirmation({ firstName, lastName, senatorIds, appointmentSlotId, 
   form.classList.add("hidden");
   confirmationView.classList.remove("hidden");
 
-  const slot = TIME_SLOTS.find((s) => s.id === appointmentSlotId);
+  const slot = timeSlots.find((s) => s.id === appointmentSlotId);
   const senatorNames = senatorIds
     .map((id) => SENATORS.find((s) => s.id === id)?.name)
     .filter(Boolean)
     .join(", ");
 
   setText("sum-student", `${firstName} ${lastName}`);
-  setText("sum-date", formatDisplayDate(CONFIG.bloodDriveDate, { weekday: true }));
-  setText("sum-location", CONFIG.location);
+  setText("sum-date", formatDisplayDate(driveConfig.bloodDriveDate, { weekday: true }));
+  setText("sum-location", driveConfig.location);
   setText("sum-slot", slot ? slot.label : "");
   setText("sum-senators", senatorNames);
   setText("sum-confid", confirmationId);
@@ -621,7 +710,9 @@ function resetForm() {
 // Wiring
 // ============================================================================
 
-function init() {
+async function init() {
+  await loadDriveSettings();
+  renderConfigurableCopy();
   renderHeader();
   renderSenatorOptions();
   renderAppointmentSlots();
