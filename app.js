@@ -93,7 +93,7 @@ function formatDisplayDate(isoDate, { weekday = false } = {}) {
     year: "numeric",
     month: "long",
     day: "numeric",
-    timeZone: "UTC",
+    timeZone: CONFIG.timeZone || "America/New_York",
   });
 }
 
