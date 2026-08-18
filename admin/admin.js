@@ -919,8 +919,33 @@ function slotLabel(id) { return TIME_SLOTS.find((slot) => slot.id === id)?.label
 function toDate(value) { const date = value ? new Date(value) : null; return date && !Number.isNaN(date.getTime()) ? date : null; }
 function formatTimestamp(value) { const date = toDate(value); return date ? date.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: DRIVE_TIME_ZONE }).replace(/EDT|GMT[-+]\d+/, DRIVE_TIME_ZONE_LABEL) : ""; }
 function formatTimestampWithSeconds(value) { const date = toDate(value); return date ? date.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "medium", timeZone: DRIVE_TIME_ZONE }).replace(/EDT|GMT[-+]\d+/, DRIVE_TIME_ZONE_LABEL) : ""; }
-function formatDate(value) { const date = value ? new Date(`${value}T00:00:00`) : null; return date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString("en-US", { dateStyle: "medium", timeZone: DRIVE_TIME_ZONE }) : ""; }
-function formatDriveDate(value) { return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", { dateStyle: "long", timeZone: DRIVE_TIME_ZONE }); }
+function formatDate(value) {
+  if (!value) return "";
+
+  const [year, month, day] = String(value).split("-").map(Number);
+
+  if (!year || !month || !day) return "";
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(year, month - 1, day));
+}
+
+function formatDriveDate(value) {
+  if (!value) return "";
+
+  const [year, month, day] = String(value).split("-").map(Number);
+
+  if (!year || !month || !day) return "";
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(year, month - 1, day));
+}
 function setText(id, value) { const element = $(id); if (element) element.textContent = value; }
 function setDisabled(id, disabled) { const element = $(id); if (element) element.disabled = disabled; }
 function showError(message) { setText("error", message); setText("counts", "Unable to load registrations"); }
