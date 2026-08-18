@@ -663,7 +663,22 @@ function renderOperationsDashboard(root, regs, checkins, user) {
   if (!root) return;
   const stats = computeOpsStats(regs, checkins);
   root.textContent = "";
-  root.append(statGrid([["Not checked in yet", stats.notArrived], ["Currently checked in", stats.checkedIn], ["Checked out / done", stats.checkedOut], ["Total students expected", stats.expected], ["Single donations", stats.single], ["Double donations", stats.double], ["Total units donated", stats.totalUnits]]));
+
+  const title = document.createElement("h2");
+  title.textContent = "Today's stats";
+  const list = document.createElement("div");
+  list.className = "checkin-stat-list";
+  [["Not checked in", stats.notArrived], ["Checked in", stats.checkedIn], ["Checked out", stats.checkedOut], ["Expected", stats.expected], ["Single", stats.single], ["Double", stats.double], ["Units", stats.totalUnits]].forEach(([label, value]) => {
+    const row = document.createElement("div");
+    row.className = "checkin-stat-row";
+    const labelEl = document.createElement("span");
+    labelEl.textContent = label;
+    const valueEl = document.createElement("b");
+    valueEl.textContent = String(value);
+    row.append(labelEl, valueEl);
+    list.appendChild(row);
+  });
+  root.append(title, list);
 }
 function attendancePanel(stats) {
   const panel = document.createElement("section"); panel.className = "ops-card ops-wide";
